@@ -71,10 +71,25 @@ class Medicine(BaseModel):
     specialization: str
     description: Optional[str] = None
 
+class ExercisePlan(BaseModel):
+    type: str
+    duration: int
+    frequency: int
+    intensity: Optional[str] = None
+    description: Optional[str] = None
+    precautions: Optional[List[str]] = None
+
+class DietPlan(BaseModel):
+    description: str
+    calories: int
+    meals: List[str]
+    nutritional_breakdown: Optional[dict] = None
+    restrictions: Optional[List[str]] = None
+
 class Recommendations(BaseModel):
     patient_recommendations: Optional[List[str]] = None
-    diet_plan: Optional[dict] = None
-    exercise_plan: Optional[dict] = None
+    diet_plan: Optional[DietPlan] = None
+    exercise_plans: Optional[List[ExercisePlan]] = None
     nutrition_targets: Optional[dict] = None
     doctor_recommendations: Optional[List[str]] = None
 
@@ -113,12 +128,16 @@ def get_risk_probabilities(patient_data: dict) -> dict:
 
 def classify_recommendation(text: str) -> str:
     t = text.lower()
-    if 'exercise' in t:
+    if 'exercise' in t or 'activity' in t:
         return 'Physical Activity'
-    if 'diet' in t or 'nutrition' in t:
+    if 'diet' in t or 'nutrition' in t or 'food' in t:
         return 'Diet'
-    if 'smoking' in t:
+    if 'smoking' in t or 'tobacco' in t:
         return 'Smoking Cessation'
+    if 'sleep' in t:
+        return 'Sleep Hygiene'
+    if 'stress' in t or 'anxiety' in t:
+        return 'Stress Management'
     return 'Other'
 
 def adjust_metrics(data: dict, kind: str) -> dict:
@@ -132,6 +151,10 @@ def adjust_metrics(data: dict, kind: str) -> dict:
             d['glucose'] = max(d['glucose'] - 10, 0)
     if kind == 'Smoking Cessation':
         d['is_smoking'] = False
+    if kind == 'Sleep Hygiene':
+        d['Sleep_Hours_Per_Day'] = min(d.get('Sleep_Hours_Per_Day', 0) + 1, 9)
+    if kind == 'Stress Management':
+        d['Stress_Level'] = max(d.get('Stress_Level', 0) - 1, 0)
     return d
 
 def is_effective(orig: dict, new: dict) -> bool:
@@ -202,101 +225,176 @@ def generate_recommendations(state: State) -> dict:
     if sent_for == 0:
         instruction = (
             "Provide up to five lifestyle and behavior change recommendations in 'patient_recommendations'.\n"
-            "Additionally, you MUST provide a diet plan tailored for Egyptian patients in 'diet_plan', which must be a dictionary with 'description' (string describing the diet, including Egyptian foods), 'calories' (integer, daily calorie target), and 'meals' (list of strings, example meals).\n"
-            "You MUST provide an exercise plan in 'exercise_plan', which must be a dictionary with 'type' (string, e.g., 'aerobic'), 'duration' (integer, minutes per session), 'frequency' (integer, sessions per week).\n"
-            "You MUST provide nutrition targets in 'nutrition_targets', which must be a dictionary with target values for relevant metrics, e.g., 'target_BMI', 'target_glucose', etc.\n"
+            "Additionally, you MUST provide a comprehensive diet plan tailored for Egyptian patients in 'diet_plan', which must include:\n"
+            "- 'description': Detailed diet description including Egyptian foods\n"
+            "- 'calories': Daily calorie target (integer)\n"
+            "- 'meals': List of example meals (3-5 examples)\n"
+            "- 'nutritional_breakdown': Macro targets (carbs 50-60%, protein 15-20%, fat 20-30%)\n"
+            "- 'restrictions': Any dietary restrictions based on conditions\n\n"
+            "You MUST provide THREE different exercise plans in 'exercise_plans' (a list), each with:\n"
+            "- 'type': Specific exercise type (e.g., 'aerobic', 'strength training', 'flexibility')\n"
+            "- 'duration': Minutes per session (30-60)\n"
+            "- 'frequency': Sessions per week (3-5)\n"
+            "- 'intensity': Light/Moderate/Vigorous\n"
+            "- 'description': Brief description of the exercises\n"
+            "- 'precautions': Any precautions based on patient conditions\n\n"
+            "You MUST provide nutrition targets in 'nutrition_targets', which must include:\n"
+            "- 'target_BMI': Realistic target\n"
+            "- 'target_glucose': Appropriate for patient\n"
+            "- Other relevant targets based on patient data\n\n"
             "Set 'doctor_recommendations' to null.\n"
-            "**Critical Instruction:** Consider the patient's current medications: {medications}. Ensure no conflicts with these medications.\n"
-            "Here's an example of the expected JSON output:\n"
+            "**Critical Considerations:**\n"
+            "- Patient's current medications: {medications}\n"
+            "- Avoid any conflicts with medications\n"
+            "- Adapt exercises to patient's fitness level\n"
+            "- Include culturally appropriate Egyptian foods\n"
+            "Example JSON output format:\n"
             "{{\n"
-            "  \"patient_recommendations\": [\"Increase water intake\", \"Reduce sugar consumption\"],\n"
-            "  \"diet_plan\": {{\"description\": \"A balanced diet with Egyptian staples like ful medames and koshari\", \"calories\": 2000, \"meals\": [\"Ful medames with bread\", \"Grilled chicken with rice\"]}},\n"
-            "  \"exercise_plan\": {{\"type\": \"aerobic\", \"duration\": 30, \"frequency\": 5}},\n"
-            "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}},\n"
+            "  \"patient_recommendations\": [\"Increase fiber intake\", \"Reduce processed foods\"],\n"
+            "  \"diet_plan\": {{\n"
+            "    \"description\": \"Mediterranean-style diet with Egyptian staples...\",\n"
+            "    \"calories\": 2000,\n"
+            "    \"meals\": [\"Ful medames with whole wheat bread\", \"Grilled fish with brown rice\"],\n"
+            "    \"nutritional_breakdown\": {{\"carbs\": 55, \"protein\": 20, \"fat\": 25}},\n"
+            "    \"restrictions\": [\"limit added sugars\", \"reduce sodium\"]\n"
+            "  }},\n"
+            "  \"exercise_plans\": [\n"
+            "    {{\"type\": \"aerobic\", \"duration\": 45, \"frequency\": 4, \"intensity\": \"Moderate\", \"description\": \"Brisk walking or swimming\", \"precautions\": [\"Monitor heart rate\"]}},\n"
+            "    {{\"type\": \"strength training\", \"duration\": 30, \"frequency\": 3, \"intensity\": \"Light\", \"description\": \"Bodyweight exercises\", \"precautions\": [\"Avoid straining\"]}},\n"
+            "    {{\"type\": \"flexibility\", \"duration\": 20, \"frequency\": 5, \"intensity\": \"Light\", \"description\": \"Yoga or stretching\", \"precautions\": []}}\n"
+            "  ],\n"
+            "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100, \"target_LDL\": 100}},\n"
             "  \"doctor_recommendations\": null\n"
             "}}"
         ).format(medications=", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]))
     elif sent_for == 1:
         instruction = (
-            "Provide a comprehensive, personalized cardiology recommendation in 'doctor_recommendations' based on the patient's data. "
-            "Structure your response as a list of strings (not dictionaries), with each string representing one recommendation section:\n"
-           
-            "1. Key Risk Factors: (no mention for age) List the patient's specific cardiovascular risk factors\n"
-            "2. Recommended Diagnostic Tests: Specify necessary labs/tests with target ranges,Tiered by urgency (emergent/urgent/elective)\n"
-            "3. Medication Considerations: \n"
-            "   - First list the patient's current medications with dosages: {medications_list}\n"
-            "   - Then suggest potential new medications with cautions\n"
-            "   - IMPORTANT: Do NOT recommend medications the patient is already taking\n"
-            "   - Check for contraindications with current medications\n"
-            "   - Include dosage guidelines and monitoring requirements\n"
-            "   - Drug titration schedules\n"
-            "   - Alternatives if first-line fails\n"
-            "   - Monitoring parameters (e.g., K+ for ACEi)\n"
-            "4. Monitoring Plan: Recommend follow-up frequency and parameters,**Follow-up**: Specific to intervention \n"
-            "5. Red Flags: Symptoms requiring immediate action\n"
-            "6. Avoid:\n"
-            "Here's an example of the expected JSON output:\n"
+            "As a cardiology specialist, provide comprehensive, evidence-based recommendations in 'doctor_recommendations'.\n"
+            "Structure your response as a detailed list with these sections:\n\n"
+            "1. **Cardiovascular Risk Assessment**:\n"
+            "   - Calculate ASCVD 10-year risk score (include formula inputs)\n"
+            "   - Highlight key modifiable/non-modifiable risk factors\n"
+            "   - Stratify risk (low/intermediate/high)\n\n"
+            "2. **Diagnostic Workup**:\n"
+            "   - Tier 1 (Essential): Lipid panel, hs-CRP, ECG\n"
+            "   - Tier 2 (Conditional): Echocardiogram, stress test\n"
+            "   - Tier 3 (Advanced): Coronary calcium scoring\n"
+            "   - Include target ranges for all tests\n\n"
+            "3. **Medication Management**:\n"
+            "   - Current medications analysis: {medications_list}\n"
+            "   - Recommended adjustments with rationale\n"
+            "   - New medication options (consider: {available_meds})\n"
+            "   - Include:\n"
+            "     * Dosing schedules\n"
+            "     * Titration plans\n"
+            "     * Monitoring parameters (e.g., renal function for ACEi)\n"
+            "     * Drug-drug interaction warnings\n\n"
+            "4. **Lifestyle Interventions**:\n"
+            "   - Specific exercise prescriptions\n"
+            "   - Dietary modifications (DASH diet components)\n"
+            "   - Stress reduction techniques\n\n"
+            "5. **Follow-up Plan**:\n"
+            "   - Short-term (1-3 month) monitoring schedule\n"
+            "   - Long-term (annual) assessments\n"
+            "   - Red flag symptoms requiring urgent attention\n\n"
+            "6. **Evidence Basis**:\n"
+            "   - Cite relevant guidelines (ACC/AHA/ESC)\n"
+            "   - Reference major clinical trials\n\n"
+            "Personalize ALL recommendations based on:\n"
+            "- Patient demographics: {age}y, {gender}\n"
+            "- Current vitals: BP {bp}, BMI {bmi}\n"
+            "- Labs: LDL {ldl}, glucose {glucose}, HbA1c {hba1c}\n"
+            "- Risk scores: ASCVD {cvd_risk}%, diabetes {diabetes_risk}%\n"
+            "- Comorbidities: {comorbidities}\n"
+            "- Current medications: {medications_count}\n\n"
+            "Example format:\n"
             "{{\n"
             "  \"doctor_recommendations\": [\n"
-            "    \"Key Risk Factors: Hypertension (BP 145/92), LDL 132, diabetes risk 32%, family history of CVD\",\n"
-            "    \"Diagnostics: Fasting lipid panel (target LDL < 70), hs-CRP, echocardiogram\",\n"
-            "    \"Medication Considerations: \\nCurrent Medications:\\n- Atorvastatin 20mg daily\\n- Metformin 500mg BID\\n\\nRecommended Additions:\\n- Consider low-dose aspirin (75mg daily) if no contraindications\\n- Monitor for GI bleeding\\n- Avoid NSAIDs due to potential interaction with aspirin\",\n"
-            "    \" Red Flags: Symptoms requiring immediate action\",\n"
-            "    \"Avoid: Repeating current meds without analysis,personalized lifestyle advice\",\n"
+            "    \"**Cardiovascular Risk Assessment**:\\n- 10-year ASCVD risk: 12.3% (intermediate)\\n- Key factors: Hypertension (Stage 2), LDL 142 mg/dL\\n- Risk stratification: Intermediate (consider statin therapy)\",\n"
+            "    \"**Diagnostic Workup**:\\n- Tier 1: Fasting lipid panel (target LDL <70 mg/dL for high risk), hs-CRP (<2 mg/L), ECG\\n- Tier 2: Echocardiogram (if HF symptoms)\",\n"
+            "    \"**Medication Management**:\\nCurrent:\\n- Metoprolol 25mg BID\\n- Hydrochlorothiazide 12.5mg daily\\n\\nRecommendations:\\n- Add atorvastatin 40mg daily (monitor LFTs)\\n- Consider ARB if BP remains >130/80\\n- Avoid NSAIDs with current regimen\",\n"
+            "    \"**Lifestyle Interventions**:\\n- DASH diet with <1500mg sodium\\n- Aerobic exercise 150 min/week\\n- Stress management techniques\",\n"
+            "    \"**Follow-up**:\\n- Repeat lipids in 3 months\\n- Annual cardiac risk reassessment\\n\\n**Red Flags**:\\n- Chest pain at rest\\n- Sudden SOB\"\n"
             "  ]\n"
-            "}}\n\n"
-            "Personalize ALL recommendations based on:\n"
-            "- Current vitals: BP {bp}, BMI {bmi}, glucose {glucose}\n"
-            "- Risk scores: ASCVD risk {cvd_risk}%, diabetes risk {diabetes_risk}%\n"
-            "- Comorbidities: {comorbidities}\n"
-            "- Lifestyle factors: {exercise}, {diet}, {smoking_status}\n"
-            "- Current medications: {medications_count} medications\n"
-            "- Available Cardiology Medications: {available_meds}\n\n"
-            "Set 'patient_recommendations', 'diet_plan', 'exercise_plan', 'nutrition_targets' to null."
+            "}}"
         ).format(
+            age=pd.get('Age', 'N/A'),
+            gender='Male' if pd.get('gender') == 'M' else 'Female',
             bp=pd.get('Blood_Pressure', 'N/A'),
             bmi=pd.get('BMI', 'N/A'),
+            ldl=pd.get('ld_value', 'N/A'),
             glucose=pd.get('glucose', 'N/A'),
+            hba1c=pd.get('hemoglobin_a1c', 'N/A'),
             cvd_risk=probs['Heart Disease'],
             diabetes_risk=probs['Diabetes'],
-            comorbidities="Prediabetes" if float(probs['Diabetes'].strip('%')) > 25 else "None noted",
-            exercise=f"{pd.get('Exercise_Hours_Per_Week', 0)} hrs/week",
-            diet=pd.get('Diet', 'Unknown'),
-            smoking_status="Smoker" if pd.get('is_smoking') else "Non-smoker",
+            comorbidities=", ".join([
+                "Hypertension" if pd.get('hypertension') else "",
+                "Prediabetes" if float(probs['Diabetes'].strip('%')) > 25 else "",
+                "Smoking" if pd.get('is_smoking') else ""
+            ]).strip(", "),
             medications_list="\n- ".join([f"{m.medicationName} {m.dosage}" + (f" ({m.frequency})" if m.frequency else "") for m in medications]),
             medications_count=len(medications),
-            medications=", ".join([f"{m.medicationName}" for m in medications]),
-            available_meds="\n".join(meds_info) if meds_info else "No specific cardiology medications in database")
+            available_meds="\n".join(meds_info) if meds_info else "No specific cardiology medications in database"
+        )
     elif sent_for == 2:
         instruction = (
-            "Provide up to three medical action recommendations for an endocrinologist in 'doctor_recommendations'. "
-            "Structure as a list of strings (not dictionaries) with:\n"
-            "1. Key metabolic risk factors\n"
-            "2. Recommended diagnostic tests with targets\n"
-            "3. Medication considerations: \n"
-            "   - First list current diabetes/endocrine medications: {medications_list}\n"
-            "   - Then suggest potential medication adjustments or additions\n"
-            "   - Do NOT recommend medications already being taken\n"
-            "   - Check for contraindications with current regimen\n"
-            "4. Monitoring plan\n"
-            "5. Evidence basis\n\n"
-            "Here's an example of the expected JSON output:\n"
+            "As an endocrinology specialist, provide comprehensive diabetes/metabolic recommendations in 'doctor_recommendations'.\n"
+            "Structure your response with these sections:\n\n"
+            "1. **Metabolic Assessment**:\n"
+            "   - Calculate ADA diabetes risk score\n"
+            "   - Assess insulin resistance (HOMA-IR if possible)\n"
+            "   - Evaluate complications risk\n\n"
+            "2. **Diagnostic Workup**:\n"
+            "   - Essential: Fasting glucose, HbA1c, lipid panel\n"
+            "   - Advanced: Oral GTT, C-peptide if indicated\n"
+            "   - Annual screening: Microalbuminuria, retinal exam\n"
+            "   - Include diagnostic thresholds\n\n"
+            "3. **Medication Management**:\n"
+            "   - Current regimen analysis: {medications_list}\n"
+            "   - ADA treatment algorithm stage\n"
+            "   - Recommended adjustments with rationale\n"
+            "   - New options from: {available_meds}\n"
+            "   - Include:\n"
+            "     * Dosing schedules\n"
+            "     * Titration plans\n"
+            "     * Hypoglycemia prevention\n"
+            "     * Renal dosing adjustments\n\n"
+            "4. **Glycemic Targets**:\n"
+            "   - Personalized HbA1c goal\n"
+            "   - Time-in-range expectations\n"
+            "   - Glucose monitoring plan\n\n"
+            "5. **Complications Prevention**:\n"
+            "   - Foot care guidelines\n"
+            "   - Neuropathy screening\n"
+            "   - Cardiovascular risk reduction\n\n"
+            "6. **Follow-up Plan**:\n"
+            "   - Short-term (1-3 month) monitoring\n"
+            "   - Long-term (annual) assessments\n"
+            "   - Sick day rules\n\n"
+            "Personalize based on:\n"
+            "- Current control: Glucose {glucose}, HbA1c {hba1c}\n"
+            "- BMI: {bmi}\n"
+            "- Complications: {complications}\n"
+            "- Current meds: {medications_count}\n\n"
+            "Example format:\n"
             "{{\n"
             "  \"doctor_recommendations\": [\n"
-            "    \"Key metabolic risk factors: Elevated glucose {glucose}, HbA1c {hba1c}, BMI {bmi}\",\n"
-            "    \"Diagnostics: Fasting glucose (target < 100), HbA1c (target < 5.7%)\",\n"
-            "    \"Medication Considerations: \\nCurrent Medications:\\n- Metformin 500mg BID\\n\\nRecommended Adjustments:\\n- Consider increasing Metformin to 1000mg BID if tolerated\\n- Add GLP-1 agonist if no contraindications\",\n"
-            "    \"Monitoring: Follow-up in 1 month for glucose check, repeat HbA1c in 3 months\",\n"
+            "    \"**Metabolic Assessment**:\\n- ADA risk score: High (HbA1c 7.2%)\\n- HOMA-IR: 3.1 (insulin resistant)\\n- Complications: No neuropathy detected\",\n"
+            "    \"**Diagnostic Workup**:\\n- Confirm with repeat HbA1c\\n- Fasting lipid panel (target LDL <100)\\n- Annual microalbuminuria screening\",\n"
+            "    \"**Medication Management**:\\nCurrent:\\n- Metformin 500mg BID\\n\\nRecommendations:\\n- Increase metformin to 1000mg BID if tolerated\\n- Add SGLT2i for cardio-renal protection\\n- Renal dosing: Adjust if eGFR <45\",\n"
+            "    \"**Glycemic Targets**:\\n- Personalized HbA1c: <7.0%\\n- Fasting target: 80-130 mg/dL\\n- Postprandial: <180 mg/dL\",\n"
+            "    \"**Follow-up**:\\n- 1 month for glucose check\\n- 3 months for repeat HbA1c\\n\\n**Red Flags**:\\n- Polyuria/polydipsia\\n- Unexplained weight loss\"\n"
             "  ]\n"
-            "}}\n\n"
-            "Set 'patient_recommendations', 'diet_plan', 'exercise_plan', 'nutrition_targets' to null."
+            "}}"
         ).format(
-            medications_list="\n- ".join([f"{m.medicationName} {m.dosage}" + (f" ({m.frequency})" if m.frequency else "") for m in medications]),
-            medications=", ".join([f"{m.medicationName}" for m in medications]),
             glucose=pd.get('glucose', 'N/A'),
             hba1c=pd.get('hemoglobin_a1c', 'N/A'),
             bmi=pd.get('BMI', 'N/A'),
-            available_meds="\n".join(meds_info) if meds_info else "No specific endocrinology medications in database")
+            complications="None" if float(probs['Diabetes'].strip('%')) < 30 else "Potential",
+            medications_list="\n- ".join([f"{m.medicationName} {m.dosage}" + (f" ({m.frequency})" if m.frequency else "") for m in medications]),
+            medications_count=len(medications),
+            available_meds="\n".join(meds_info) if meds_info else "No specific endocrinology medications in database"
+        )
     else:
         raise HTTPException(status_code=400, detail='Invalid sent_for value')
 
@@ -328,7 +426,7 @@ def generate_recommendations(state: State) -> dict:
             
         recs = Recommendations(**json_data)
         
-        if sent_for == 0 and (not recs.diet_plan or not recs.exercise_plan):
+        if sent_for == 0 and (not recs.diet_plan or not recs.exercise_plans):
             raise ValueError("Missing required recommendation fields")
             
         return {'recommendations': recs}
@@ -370,7 +468,14 @@ def output_results(state: State) -> dict:
         result.update({
             'patient_recommendations': state['selected_patient_recommendations'][:3],
             'diet_plan': state['recommendations'].diet_plan,
-            'exercise_plan': state['recommendations'].exercise_plan,
+            'exercise_plans': [{
+                'type': plan.type,
+                'duration': plan.duration,
+                'frequency': plan.frequency,
+                'intensity': plan.intensity,
+                'description': plan.description,
+                'precautions': plan.precautions or []
+            } for plan in state['recommendations'].exercise_plans[:3]] if state['recommendations'].exercise_plans else None,
             'nutrition_targets': state['recommendations'].nutrition_targets
         })
     else:
