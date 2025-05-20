@@ -113,25 +113,37 @@ def get_risk_probabilities(patient_data: dict) -> dict:
 
 def classify_recommendation(text: str) -> str:
     t = text.lower()
-    if 'exercise' in t:
+    if 'exercise' in t or 'walk' in t or 'activity' in t:
         return 'Physical Activity'
-    if 'diet' in t or 'nutrition' in t:
+    if 'diet' in t or 'nutrition' in t or 'food' in t or 'eat' in t:
         return 'Diet'
-    if 'smoking' in t:
+    if 'smoking' in t or 'tobacco' in t:
         return 'Smoking Cessation'
+    if 'stress' in t or 'relax' in t or 'yoga' in t or 'breath' in t:
+        return 'Stress Reduction'
     return 'Other'
 
 def adjust_metrics(data: dict, kind: str) -> dict:
     d = data.copy()
     if kind == 'Physical Activity':
-        d['Exercise_Hours_Per_Week'] = d.get('Exercise_Hours_Per_Week', 0) + 2
+        current_exercise = d.get('Exercise_Hours_Per_Week', 0)
+        # Gradual increase based on current level
+        if current_exercise < 2:
+            d['Exercise_Hours_Per_Week'] = current_exercise + 1
+        elif current_exercise < 5:
+            d['Exercise_Hours_Per_Week'] = current_exercise + 2
+        else:
+            d['Exercise_Hours_Per_Week'] = current_exercise + 0.5  # smaller increments for active patients
     if kind == 'Diet':
         if 'BMI' in d:
-            d['BMI'] = max(d['BMI'] - 1, 0)
+            # Gradual BMI reduction
+            d['BMI'] = max(d['BMI'] - 0.5, 0)  # More realistic 0.5 reduction
         if 'glucose' in d:
-            d['glucose'] = max(d['glucose'] - 10, 0)
+            d['glucose'] = max(d['glucose'] - 5, 0)  # Smaller glucose reduction
     if kind == 'Smoking Cessation':
         d['is_smoking'] = False
+    if kind == 'Stress Reduction':
+        d['Stress_Level'] = max(d.get('Stress_Level', 0) - 2, 0)
     return d
 
 def is_effective(orig: dict, new: dict) -> bool:
@@ -141,8 +153,18 @@ def is_effective(orig: dict, new: dict) -> bool:
     o_c = parse_probability(o['Heart Disease'])
     n_d = parse_probability(n['Diabetes'])
     n_c = parse_probability(n['Heart Disease'])
-    return ((n_d < o_d - 0.05 and n_c <= o_c + 0.01) or
-            (n_c < o_c - 0.05 and n_d <= o_d + 0.01))
+    
+    # Check for meaningful improvement in either risk without worsening the other
+    diabetes_improved = n_d < o_d - 0.03  # Slightly more lenient threshold
+    heart_improved = n_c < o_c - 0.03
+    
+    # Also consider if stress was reduced significantly
+    stress_reduced = ('Stress_Level' in new and 
+                     new['Stress_Level'] < orig.get('Stress_Level', 10) - 1)
+    
+    return ((diabetes_improved and n_c <= o_c + 0.01) or
+            (heart_improved and n_d <= o_d + 0.01) or
+            stress_reduced)
 
 def get_patient_medications(patient_id: str) -> List[Medication]:
     try:
@@ -200,22 +222,57 @@ def generate_recommendations(state: State) -> dict:
         meds_info.append(info)
 
     if sent_for == 0:
+        target_bmi = max(float(pd.get('BMI', 25)) - 1 if pd.get('BMI') else 25
         instruction = (
-            "Provide up to five lifestyle and behavior change recommendations in 'patient_recommendations'.\n"
-            "Additionally, you MUST provide a diet plan tailored for Egyptian patients in 'diet_plan', which must be a dictionary with 'description' (string describing the diet, including Egyptian foods), 'calories' (integer, daily calorie target), and 'meals' (list of strings, example meals).\n"
-            "You MUST provide an exercise plan in 'exercise_plan', which must be a dictionary with 'type' (string, e.g., 'aerobic'), 'duration' (integer, minutes per session), 'frequency' (integer, sessions per week).\n"
-            "You MUST provide nutrition targets in 'nutrition_targets', which must be a dictionary with target values for relevant metrics, e.g., 'target_BMI', 'target_glucose', etc.\n"
-            "Set 'doctor_recommendations' to null.\n"
-            "**Critical Instruction:** Consider the patient's current medications: {medications}. Ensure no conflicts with these medications.\n"
-            "Here's an example of the expected JSON output:\n"
+            "Provide up to five lifestyle recommendations in 'patient_recommendations' using POSITIVE, ENCOURAGING language in Arabic. "
+            "If the patient is doing well in any area, acknowledge this first before suggesting small improvements.\n"
+            
+            "For the exercise plan (in 'exercise_plan'), it MUST be personalized based on:\n"
+            "- Current BMI: {bmi} (target BMI: {target_bmi})\n"
+            "- Age: {age}\n"
+            "- Stress level: {stress_level}/10\n"
+            "The plan must include:\n"
+            "- 'type': Specific activities (e.g., walking, swimming)\n"
+            "- 'intensity': Light/Moderate/Vigorous based on fitness level\n"
+            "- 'duration': Minutes per session\n"
+            "- 'frequency': Sessions per week\n"
+            "- 'progression': How to gradually increase intensity\n"
+            "- 'stress_reduction': Yoga/breathing exercises if stress > 5\n"
+            
+            "For the diet plan (in 'diet_plan'), it MUST:\n"
+            "- Be culturally appropriate for Egyptian patients\n"
+            "- Include specific local food examples\n"
+            "- Specify portion sizes\n"
+            "- Include hydration goals\n"
+            
+            "Example JSON output format:\n"
             "{{\n"
-            "  \"patient_recommendations\": [\"Increase water intake\", \"Reduce sugar consumption\"],\n"
-            "  \"diet_plan\": {{\"description\": \"A balanced diet with Egyptian staples like ful medames and koshari\", \"calories\": 2000, \"meals\": [\"Ful medames with bread\", \"Grilled chicken with rice\"]}},\n"
-            "  \"exercise_plan\": {{\"type\": \"aerobic\", \"duration\": 30, \"frequency\": 5}},\n"
-            "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}},\n"
-            "  \"doctor_recommendations\": null\n"
+            "  \"patient_recommendations\": [\n"
+            "    \"أنت على الطريق الصحيح في نشاطك البدني! دعنا نحاول إضافة 10 دقائق أخرى يوميًا.\",\n"
+            "    \"نظامك الغذائي جيد جدًا! يمكنك إضافة المزيد من الخضروات الورقية مثل الملوخية.\"\n"
+            "  ],\n"
+            "  \"diet_plan\": {{\n"
+            "    \"description\": \"نظام غذائي مصري متوازن مع كميات مناسبة\",\n"
+            "    \"calories\": 2000,\n"
+            "    \"meals\": [\"فول مدمس (طبق صغير)\", \"دجاج مشوي (قطعة واحدة) مع أرز بني (نصف كوب)\"],\n"
+            "    \"hydration\": \"8 أكواب ماء يوميًا\"\n"
+            "  }},\n"
+            "  \"exercise_plan\": {{\n"
+            "    \"type\": \"المشي + تمارين الإطالة\",\n"
+            "    \"intensity\": \"متوسط\",\n"
+            "    \"duration\": 30,\n"
+            "    \"frequency\": 5,\n"
+            "    \"progression\": \"إضافة 5 دقائق أسبوعيًا حتى الوصول إلى 45 دقيقة\",\n"
+            "    \"stress_reduction\": \"10 دقائق تمارين تنفس يوميًا\"\n"
+            "  }},\n"
+            "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}}\n"
             "}}"
-        ).format(medications=", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]))
+        ).format(
+            bmi=pd.get('BMI', 'N/A'),
+            target_bmi=target_bmi,
+            age=pd.get('Age', 'N/A'),
+            stress_level=pd.get('Stress_Level', 0)
+        )
     elif sent_for == 1:
         instruction = (
             "Provide a comprehensive, personalized cardiology recommendation in 'doctor_recommendations' based on the patient's data. "
