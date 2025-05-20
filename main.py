@@ -166,15 +166,27 @@ def is_effective(orig: dict, new: dict) -> bool:
 def get_patient_medications(patient_id: str) -> List[Medication]:
     try:
         medications = list(medications_col.find({"patientId": patient_id}))
-        return [
-            Medication(
-                medicationName=med.get('medicationName'),
-                dosage=med.get('dosage'),
-                frequency=med.get('frequency')
-            ) for med in medications
-        ]
+        valid_medications = []
+        for med in medications:
+            try:
+                # Ensure required fields exist and are non-empty
+                if not med.get('medicationName') or not med.get('dosage'):
+                    logger.warning(f"Skipping invalid medication document for patient {patient_id}: {med}")
+                    continue
+                valid_medications.append(
+                    Medication(
+                        medicationName=med.get('medicationName'),
+                        dosage=med.get('dosage'),
+                        frequency=med.get('frequency')
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Failed to parse medication for patient {patient_id}: {med}, error: {str(e)}")
+                continue
+        logger.info(f"Fetched {len(valid_medications)} valid medications for patient {patient_id}")
+        return valid_medications
     except Exception as e:
-        logger.error(f"Failed to fetch medications: {str(e)}")
+        logger.error(f"Failed to fetch medications for patient {patient_id}: {str(e)}")
         return []
 
 def get_available_medicines() -> List[Medicine]:
@@ -218,6 +230,8 @@ def generate_recommendations(state: State) -> dict:
             info += f" (description: {med.description})"
         meds_info.append(info)
 
+    medications_str = ", ".join([f"{m.medicationName} ({m.dosage})" for m in medications if hasattr(m, 'medicationName') and hasattr(m, 'dosage')]) or "None"
+
     if sent_for == 0:
         instruction = (
             "Provide up to five lifestyle and behavior change recommendations in 'patient_recommendations'.\n"
@@ -234,7 +248,7 @@ def generate_recommendations(state: State) -> dict:
             "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}},\n"
             "  \"doctor_recommendations\": null\n"
             "}}"
-        ).format(medications=", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]))
+        ).format(medications=medications_str)
     elif sent_for == 1:
         instruction = (
             "As a cardiology specialist, provide focused medication management and follow-up recommendations in 'doctor_recommendations'.\n"
@@ -283,7 +297,7 @@ def generate_recommendations(state: State) -> dict:
             ldl=pd.get('ld_value', 'N/A'),
             cvd_risk=probs['Heart Disease'],
             diabetes_risk=probs['Diabetes'],
-            medications_list="\n- ".join([f"{m.medicationName} {m.dosage}" + (f" ({m.frequency})" if m.frequency else "") for m in medications]),
+            medications_list="\n- ".join([f"{m.medicationName} {m.dosage}" + (f" ({m.frequency})" if m.frequency else "") for m in medications if hasattr(m, 'medicationName') and hasattr(m, 'dosage')]) or "None",
             available_meds="\n".join(meds_info) if meds_info else "None"
         )
     elif sent_for == 2:
@@ -330,7 +344,7 @@ def generate_recommendations(state: State) -> dict:
             hba1c=pd.get('hemoglobin_a1c', 'N/A'),
             bmi=pd.get('BMI', 'N/A'),
             diabetes_risk=probs['Diabetes'],
-            medications_list="\n- ".join([f"{m.medicationName} {m.dosage}" + (f" ({m.frequency})" if m.frequency else "") for m in medications]),
+            medications_list="\n- ".join([f"{m.medicationName} {m.dosage}" + (f" ({m.frequency})" if m.frequency else "") for m in medications if hasattr(m, 'medicationName') and hasattr(m, 'dosage')]) or "None",
             available_meds="\n".join(meds_info) if meds_info else "None"
         )
     else:
@@ -339,7 +353,7 @@ def generate_recommendations(state: State) -> dict:
     prompt = (
         f"Based on the following patient profile and risk probabilities, generate recommendations.\n"
         f"Patient Data: {pd}\n"
-        f"Current Medications: {[f'{m.medicationName} {m.dosage}' + (f' ({m.frequency})' if m.frequency else '') for m in medications]}\n"
+        f"Current Medications: {medications_str}\n"
         f"Diabetes Risk: {probs['Diabetes']}\n"
         f"CVD Risk: {probs['Heart Disease']}\n\n"
         f"{instruction}\n"
@@ -399,7 +413,7 @@ def output_results(state: State) -> dict:
             'medicationName': m.medicationName,
             'dosage': m.dosage,
             'frequency': m.frequency
-        } for m in state.get('current_medications', [])]
+        } for m in state.get('current_medications', []) if hasattr(m, 'medicationName') and hasattr(m, 'dosage')]
     }
     
     if state['sent_for'] == 0:
