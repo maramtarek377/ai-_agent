@@ -222,7 +222,7 @@ def generate_recommendations(state: State) -> dict:
         meds_info.append(info)
 
     if sent_for == 0:
-        target_bmi = max(float(pd.get('BMI', 25)) - 1 if pd.get('BMI') else 25
+        target_bmi = max(float(pd.get('BMI', 25)) - 1 if pd.get('BMI') else 25)
         instruction = (
             "Provide up to five lifestyle recommendations in 'patient_recommendations' using POSITIVE, ENCOURAGING language in Arabic. "
             "If the patient is doing well in any area, acknowledge this first before suggesting small improvements.\n"
@@ -249,7 +249,8 @@ def generate_recommendations(state: State) -> dict:
             "{{\n"
             "  \"patient_recommendations\": [\n"
             "    \"أنت على الطريق الصحيح في نشاطك البدني! دعنا نحاول إضافة 10 دقائق أخرى يوميًا.\",\n"
-            "    \"نظامك الغذائي جيد جدًا! يمكنك إضافة المزيد من الخضروات الورقية مثل الملوخية.\"\n"
+            "    \" نظامك الغذائي جيد جدًا! يمكنك إضافة المزيد من الخضروات الورقية مثل الملوخية.\"\n"
+            " \"all prompt should be in english no arabic\""
             "  ],\n"
             "  \"diet_plan\": {{\n"
             "    \"description\": \"نظام غذائي مصري متوازن مع كميات مناسبة\",\n"
