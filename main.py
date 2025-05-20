@@ -222,9 +222,9 @@ def generate_recommendations(state: State) -> dict:
         meds_info.append(info)
 
     if sent_for == 0:
-        target_bmi = max(float(pd.get('BMI', 25)) - 1 if pd.get('BMI') else 25)
+        target_bmi = max(float(pd.get('BMI', 25)) - 1 if pd.get('BMI') else 25, 18.5)
         instruction = (
-            "Provide up to five lifestyle recommendations in 'patient_recommendations' using POSITIVE, ENCOURAGING language in Arabic. "
+            "Provide up to five lifestyle recommendations in 'patient_recommendations' using POSITIVE, ENCOURAGING language. "
             "If the patient is doing well in any area, acknowledge this first before suggesting small improvements.\n"
             
             "For the exercise plan (in 'exercise_plan'), it MUST be personalized based on:\n"
@@ -240,31 +240,30 @@ def generate_recommendations(state: State) -> dict:
             "- 'stress_reduction': Yoga/breathing exercises if stress > 5\n"
             
             "For the diet plan (in 'diet_plan'), it MUST:\n"
-            "- Be culturally appropriate for Egyptian patients\n"
-            "- Include specific local food examples\n"
+            "- Be culturally appropriate for the patient\n"
+            "- Include specific food examples\n"
             "- Specify portion sizes\n"
             "- Include hydration goals\n"
             
             "Example JSON output format:\n"
             "{{\n"
             "  \"patient_recommendations\": [\n"
-            "    \"أنت على الطريق الصحيح في نشاطك البدني! دعنا نحاول إضافة 10 دقائق أخرى يوميًا.\",\n"
-            "    \" نظامك الغذائي جيد جدًا! يمكنك إضافة المزيد من الخضروات الورقية مثل الملوخية.\"\n"
-            " \"all prompt should be in english no arabic\""
+            "    \"You're on the right track with your physical activity! Let's try adding 10 more minutes per day.\",\n"
+            "    \"Your diet is good! Consider adding more leafy greens like spinach.\"\n"
             "  ],\n"
             "  \"diet_plan\": {{\n"
-            "    \"description\": \"نظام غذائي مصري متوازن مع كميات مناسبة\",\n"
+            "    \"description\": \"Balanced diet with controlled portions\",\n"
             "    \"calories\": 2000,\n"
-            "    \"meals\": [\"فول مدمس (طبق صغير)\", \"دجاج مشوي (قطعة واحدة) مع أرز بني (نصف كوب)\"],\n"
-            "    \"hydration\": \"8 أكواب ماء يوميًا\"\n"
+            "    \"meals\": [\"Oatmeal (1 cup)\", \"Grilled chicken (1 piece) with brown rice (1/2 cup)\"],\n"
+            "    \"hydration\": \"8 glasses of water daily\"\n"
             "  }},\n"
             "  \"exercise_plan\": {{\n"
-            "    \"type\": \"المشي + تمارين الإطالة\",\n"
-            "    \"intensity\": \"متوسط\",\n"
+            "    \"type\": \"Walking + stretching\",\n"
+            "    \"intensity\": \"Moderate\",\n"
             "    \"duration\": 30,\n"
             "    \"frequency\": 5,\n"
-            "    \"progression\": \"إضافة 5 دقائق أسبوعيًا حتى الوصول إلى 45 دقيقة\",\n"
-            "    \"stress_reduction\": \"10 دقائق تمارين تنفس يوميًا\"\n"
+            "    \"progression\": \"Add 5 minutes weekly until reaching 45 minutes\",\n"
+            "    \"stress_reduction\": \"10 minutes deep breathing daily\"\n"
             "  }},\n"
             "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}}\n"
             "}}"
@@ -473,8 +472,12 @@ async def get_recommendations(patient_id: str, sent_for: Optional[int] = 0):
     # Get available medicines from database
     available_medicines = get_available_medicines()
 
+    # Safely handle blood pressure comparison
+    blood_pressure = patient.get("bloodPressure")
+    hypertension = 1 if blood_pressure is not None and blood_pressure > 130 else 0
+
     patient_data = {
-        "Blood_Pressure": patient.get('bloodPressure'),
+        "Blood_Pressure": blood_pressure,
         "Age": patient.get('anchorAge'),
         "Exercise_Hours_Per_Week": patient.get('exerciseHoursPerWeek'),
         "Diet":  patient.get('diet'),
@@ -482,7 +485,7 @@ async def get_recommendations(patient_id: str, sent_for: Optional[int] = 0):
         "Stress_Level": patient.get('stressLevel'),
         "glucose": patient.get('glucose'),
         "BMI": patient.get('bmi'),
-        "hypertension":  1 if patient.get("bloodPressure", 0) > 130 else 0,
+        "hypertension": hypertension,
         "is_smoking": patient.get('isSmoker'),
         "hemoglobin_a1c": patient.get('hemoglobinA1c'),
         "Diabetes_pedigree": patient.get('diabetesPedigree'),
