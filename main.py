@@ -3,7 +3,7 @@ import json
 import re
 import logging
 from datetime import date
-from typing import TypedDict, Optional, List, Dict, Any
+from typing import TypedDict, Optional, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from bson import ObjectId, SON
@@ -71,20 +71,11 @@ class Medicine(BaseModel):
     specialization: str
     description: Optional[str] = None
 
-class ExerciseActivity(BaseModel):
-    name: str
-    duration_minutes: int
-    intensity: str
-    description: Optional[str] = None
-
-class ExerciseSession(BaseModel):
-    day: str
-    activities: List[ExerciseActivity]
-
 class ExercisePlan(BaseModel):
     type: str
-    weekly_frequency: int
-    sessions: List[ExerciseSession]
+    duration: int
+    frequency: int
+    description: str
 
 class DietPlan(BaseModel):
     description: str
@@ -231,17 +222,7 @@ def generate_recommendations(state: State) -> dict:
         instruction = (
             "Provide up to five lifestyle and behavior change recommendations in 'patient_recommendations'.\n"
             "Additionally, you MUST provide a diet plan tailored for Egyptian patients in 'diet_plan', which must be a dictionary with 'description' (string describing the diet, including Egyptian foods), 'calories' (integer, daily calorie target), and 'meals' (list of strings, example meals).\n"
-            "You MUST provide a comprehensive exercise plan in 'exercise_plan', which must be a LIST of dictionaries with the following structure:\n"
-            "Each exercise plan dictionary should contain:\n"
-            "- 'type': string (e.g., 'aerobic', 'strength training', 'mixed')\n"
-            "- 'weekly_frequency': integer (sessions per week)\n"
-            "- 'sessions': list of dictionaries, each representing a specific session with:\n"
-            "  - 'day': string (e.g., 'Monday', 'Tuesday')\n"
-            "  - 'activities': list of activities with:\n"
-            "    - 'name': string (name of activity)\n"
-            "    - 'duration_minutes': integer\n"
-            "    - 'intensity': string (low/medium/high)\n"
-            "    - 'description': string (optional details)\n"
+            "You MUST provide a comprehensive exercise plan in 'exercise_plan', which must be a LIST of dictionaries (each representing a different exercise type) with 'type' (string, e.g., 'aerobic', 'strength training'), 'duration' (integer, minutes per session), 'frequency' (integer, sessions per week), and 'description' (string, details about the exercise).\n"
             "You MUST provide nutrition targets in 'nutrition_targets', which must be a dictionary with target values for relevant metrics, e.g., 'target_BMI', 'target_glucose', etc.\n"
             "Set 'doctor_recommendations' to null.\n"
             "**Critical Instruction:** Consider the patient's current medications: {medications}. Ensure no conflicts with these medications.\n"
@@ -249,48 +230,7 @@ def generate_recommendations(state: State) -> dict:
             "{{\n"
             "  \"patient_recommendations\": [\"Increase water intake\", \"Reduce sugar consumption\"],\n"
             "  \"diet_plan\": {{\"description\": \"A balanced diet with Egyptian staples like ful medames and koshari\", \"calories\": 2000, \"meals\": [\"Ful medames with bread\", \"Grilled chicken with rice\"]}},\n"
-            "  \"exercise_plan\": [\n"
-            "    {{\n"
-            "      \"type\": \"mixed aerobic and strength\",\n"
-            "      \"weekly_frequency\": 5,\n"
-            "      \"sessions\": [\n"
-            "        {{\n"
-            "          \"day\": \"Monday\",\n"
-            "          \"activities\": [\n"
-            "            {{\"name\": \"Brisk walking\", \"duration_minutes\": 30, \"intensity\": \"medium\", \"description\": \"Outdoor or treadmill walking\"}},\n"
-            "            {{\"name\": \"Bodyweight exercises\", \"duration_minutes\": 15, \"intensity\": \"high\", \"description\": \"Squats, push-ups, lunges\"}}\n"
-            "          ]\n"
-            "        }},\n"
-            "        {{\n"
-            "          \"day\": \"Wednesday\",\n"
-            "          \"activities\": [\n"
-            "            {{\"name\": \"Swimming\", \"duration_minutes\": 45, \"intensity\": \"medium\", \"description\": \"Freestyle or breaststroke\"}},\n"
-            "            {{\"name\": \"Core exercises\", \"duration_minutes\": 15, \"intensity\": \"medium\", \"description\": \"Planks, crunches\"}}\n"
-            "          ]\n"
-            "        }},\n"
-            "        {{\n"
-            "          \"day\": \"Friday\",\n"
-            "          \"activities\": [\n"
-            "            {{\"name\": \"Cycling\", \"duration_minutes\": 40, \"intensity\": \"medium\", \"description\": \"Stationary or outdoor bike\"}},\n"
-            "            {{\"name\": \"Resistance training\", \"duration_minutes\": 20, \"intensity\": \"high\", \"description\": \"Using resistance bands\"}}\n"
-            "          ]\n"
-            "        }}\n"
-            "      ]\n"
-            "    }},\n"
-            "    {{\n"
-            "      \"type\": \"flexibility and balance\",\n"
-            "      \"weekly_frequency\": 7,\n"
-            "      \"sessions\": [\n"
-            "        {{\n"
-            "          \"day\": \"Daily\",\n"
-            "          \"activities\": [\n"
-            "            {{\"name\": \"Stretching\", \"duration_minutes\": 15, \"intensity\": \"low\", \"description\": \"Full body stretching routine\"}},\n"
-            "            {{\"name\": \"Yoga\", \"duration_minutes\": 10, \"intensity\": \"low\", \"description\": \"Basic yoga poses for flexibility\"}}\n"
-            "          ]\n"
-            "        }}\n"
-            "      ]\n"
-            "    }}\n"
-            "  ],\n"
+            " \"exercise_plan\": {\"type\": \"aerobic and strength mix\", \"duration\": 45, \"frequency\": 5, \"sessions\":[{"day":"Monday","activity":"Jogging","duration_minutes":30}, ...]},\n"
             "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}},\n"
             "  \"doctor_recommendations\": null\n"
             "}}"
@@ -468,17 +408,10 @@ def output_results(state: State) -> dict:
             'diet_plan': state['recommendations'].diet_plan,
             'exercise_plan': [{
                 'type': plan.type,
-                'weekly_frequency': plan.weekly_frequency,
-                'sessions': [{
-                    'day': session.day,
-                    'activities': [{
-                        'name': activity.name,
-                        'duration_minutes': activity.duration_minutes,
-                        'intensity': activity.intensity,
-                        'description': activity.description
-                    } for activity in session.activities]
-                } for session in plan.sessions[:3]]  # Limit to first 3 sessions per plan
-            } for plan in state['recommendations'].exercise_plan[:2]] if state['recommendations'].exercise_plan else None,
+                'duration': plan.duration,
+                'frequency': plan.frequency,
+                'description': plan.description
+            } for plan in state['recommendations'].exercise_plan[:3]] if state['recommendations'].exercise_plan else None,
             'nutrition_targets': state['recommendations'].nutrition_targets
         })
     else:
