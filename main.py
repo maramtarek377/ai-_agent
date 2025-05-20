@@ -75,21 +75,17 @@ class ExercisePlan(BaseModel):
     type: str
     duration: int
     frequency: int
-    intensity: Optional[str] = None
-    description: Optional[str] = None
-    precautions: Optional[List[str]] = None
+    description: str
 
 class DietPlan(BaseModel):
     description: str
     calories: int
     meals: List[str]
-    nutritional_breakdown: Optional[dict] = None
-    restrictions: Optional[List[str]] = None
 
 class Recommendations(BaseModel):
     patient_recommendations: Optional[List[str]] = None
     diet_plan: Optional[DietPlan] = None
-    exercise_plans: Optional[List[ExercisePlan]] = None
+    exercise_plan: Optional[List[ExercisePlan]] = None
     nutrition_targets: Optional[dict] = None
     doctor_recommendations: Optional[List[str]] = None
 
@@ -225,45 +221,21 @@ def generate_recommendations(state: State) -> dict:
     if sent_for == 0:
         instruction = (
             "Provide up to five lifestyle and behavior change recommendations in 'patient_recommendations'.\n"
-            "Additionally, you MUST provide a comprehensive diet plan tailored for Egyptian patients in 'diet_plan', which must include:\n"
-            "- 'description': Detailed diet description including Egyptian foods\n"
-            "- 'calories': Daily calorie target (integer)\n"
-            "- 'meals': List of example meals (3-5 examples)\n"
-            "- 'nutritional_breakdown': Macro targets (carbs 50-60%, protein 15-20%, fat 20-30%)\n"
-            "- 'restrictions': Any dietary restrictions based on conditions\n\n"
-            "You MUST provide THREE different exercise plans in 'exercise_plans' (a list), each with:\n"
-            "- 'type': Specific exercise type (e.g., 'aerobic', 'strength training', 'flexibility')\n"
-            "- 'duration': Minutes per session (30-60)\n"
-            "- 'frequency': Sessions per week (3-5)\n"
-            "- 'intensity': Light/Moderate/Vigorous\n"
-            "- 'description': Brief description of the exercises\n"
-            "- 'precautions': Any precautions based on patient conditions\n\n"
-            "You MUST provide nutrition targets in 'nutrition_targets', which must include:\n"
-            "- 'target_BMI': Realistic target\n"
-            "- 'target_glucose': Appropriate for patient\n"
-            "- Other relevant targets based on patient data\n\n"
+            "Additionally, you MUST provide a diet plan tailored for Egyptian patients in 'diet_plan', which must be a dictionary with 'description' (string describing the diet, including Egyptian foods), 'calories' (integer, daily calorie target), and 'meals' (list of strings, example meals).\n"
+            "You MUST provide a comprehensive exercise plan in 'exercise_plan', which must be a LIST of dictionaries (each representing a different exercise type) with 'type' (string, e.g., 'aerobic', 'strength training'), 'duration' (integer, minutes per session), 'frequency' (integer, sessions per week), and 'description' (string, details about the exercise).\n"
+            "You MUST provide nutrition targets in 'nutrition_targets', which must be a dictionary with target values for relevant metrics, e.g., 'target_BMI', 'target_glucose', etc.\n"
             "Set 'doctor_recommendations' to null.\n"
-            "**Critical Considerations:**\n"
-            "- Patient's current medications: {medications}\n"
-            "- Avoid any conflicts with medications\n"
-            "- Adapt exercises to patient's fitness level\n"
-            "- Include culturally appropriate Egyptian foods\n"
-            "Example JSON output format:\n"
+            "**Critical Instruction:** Consider the patient's current medications: {medications}. Ensure no conflicts with these medications.\n"
+            "Here's an example of the expected JSON output:\n"
             "{{\n"
-            "  \"patient_recommendations\": [\"Increase fiber intake\", \"Reduce processed foods\"],\n"
-            "  \"diet_plan\": {{\n"
-            "    \"description\": \"Mediterranean-style diet with Egyptian staples...\",\n"
-            "    \"calories\": 2000,\n"
-            "    \"meals\": [\"Ful medames with whole wheat bread\", \"Grilled fish with brown rice\"],\n"
-            "    \"nutritional_breakdown\": {{\"carbs\": 55, \"protein\": 20, \"fat\": 25}},\n"
-            "    \"restrictions\": [\"limit added sugars\", \"reduce sodium\"]\n"
-            "  }},\n"
-            "  \"exercise_plans\": [\n"
-            "    {{\"type\": \"aerobic\", \"duration\": 45, \"frequency\": 4, \"intensity\": \"Moderate\", \"description\": \"Brisk walking or swimming\", \"precautions\": [\"Monitor heart rate\"]}},\n"
-            "    {{\"type\": \"strength training\", \"duration\": 30, \"frequency\": 3, \"intensity\": \"Light\", \"description\": \"Bodyweight exercises\", \"precautions\": [\"Avoid straining\"]}},\n"
-            "    {{\"type\": \"flexibility\", \"duration\": 20, \"frequency\": 5, \"intensity\": \"Light\", \"description\": \"Yoga or stretching\", \"precautions\": []}}\n"
+            "  \"patient_recommendations\": [\"Increase water intake\", \"Reduce sugar consumption\"],\n"
+            "  \"diet_plan\": {{\"description\": \"A balanced diet with Egyptian staples like ful medames and koshari\", \"calories\": 2000, \"meals\": [\"Ful medames with bread\", \"Grilled chicken with rice\"]}},\n"
+            "  \"exercise_plan\": [\n"
+            "    {{\"type\": \"aerobic\", \"duration\": 30, \"frequency\": 5, \"description\": \"Brisk walking or swimming\"}},\n"
+            "    {{\"type\": \"strength training\", \"duration\": 20, \"frequency\": 3, \"description\": \"Bodyweight exercises like squats and push-ups\"}},\n"
+            "    {{\"type\": \"flexibility\", \"duration\": 15, \"frequency\": 7, \"description\": \"Daily stretching or yoga\"}}\n"
             "  ],\n"
-            "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100, \"target_LDL\": 100}},\n"
+            "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}},\n"
             "  \"doctor_recommendations\": null\n"
             "}}"
         ).format(medications=", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]))
@@ -426,7 +398,7 @@ def generate_recommendations(state: State) -> dict:
             
         recs = Recommendations(**json_data)
         
-        if sent_for == 0 and (not recs.diet_plan or not recs.exercise_plans):
+        if sent_for == 0 and (not recs.diet_plan or not recs.exercise_plan):
             raise ValueError("Missing required recommendation fields")
             
         return {'recommendations': recs}
@@ -468,14 +440,12 @@ def output_results(state: State) -> dict:
         result.update({
             'patient_recommendations': state['selected_patient_recommendations'][:3],
             'diet_plan': state['recommendations'].diet_plan,
-            'exercise_plans': [{
+            'exercise_plan': [{
                 'type': plan.type,
                 'duration': plan.duration,
                 'frequency': plan.frequency,
-                'intensity': plan.intensity,
-                'description': plan.description,
-                'precautions': plan.precautions or []
-            } for plan in state['recommendations'].exercise_plans[:3]] if state['recommendations'].exercise_plans else None,
+                'description': plan.description
+            } for plan in state['recommendations'].exercise_plan[:3]] if state['recommendations'].exercise_plan else None,
             'nutrition_targets': state['recommendations'].nutrition_targets
         })
     else:
