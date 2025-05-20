@@ -113,37 +113,25 @@ def get_risk_probabilities(patient_data: dict) -> dict:
 
 def classify_recommendation(text: str) -> str:
     t = text.lower()
-    if 'exercise' in t or 'walk' in t or 'activity' in t:
+    if 'exercise' in t:
         return 'Physical Activity'
-    if 'diet' in t or 'nutrition' in t or 'food' in t or 'eat' in t:
+    if 'diet' in t or 'nutrition' in t:
         return 'Diet'
-    if 'smoking' in t or 'tobacco' in t:
+    if 'smoking' in t:
         return 'Smoking Cessation'
-    if 'stress' in t or 'relax' in t or 'yoga' in t or 'breath' in t:
-        return 'Stress Reduction'
     return 'Other'
 
 def adjust_metrics(data: dict, kind: str) -> dict:
     d = data.copy()
     if kind == 'Physical Activity':
-        current_exercise = d.get('Exercise_Hours_Per_Week', 0)
-        # Gradual increase based on current level
-        if current_exercise < 2:
-            d['Exercise_Hours_Per_Week'] = current_exercise + 1
-        elif current_exercise < 5:
-            d['Exercise_Hours_Per_Week'] = current_exercise + 2
-        else:
-            d['Exercise_Hours_Per_Week'] = current_exercise + 0.5  # smaller increments for active patients
+        d['Exercise_Hours_Per_Week'] = d.get('Exercise_Hours_Per_Week', 0) + 2
     if kind == 'Diet':
         if 'BMI' in d:
-            # Gradual BMI reduction
-            d['BMI'] = max(d['BMI'] - 0.5, 0)  # More realistic 0.5 reduction
+            d['BMI'] = max(d['BMI'] - 1, 0)
         if 'glucose' in d:
-            d['glucose'] = max(d['glucose'] - 5, 0)  # Smaller glucose reduction
+            d['glucose'] = max(d['glucose'] - 10, 0)
     if kind == 'Smoking Cessation':
         d['is_smoking'] = False
-    if kind == 'Stress Reduction':
-        d['Stress_Level'] = max(d.get('Stress_Level', 0) - 2, 0)
     return d
 
 def is_effective(orig: dict, new: dict) -> bool:
@@ -153,18 +141,8 @@ def is_effective(orig: dict, new: dict) -> bool:
     o_c = parse_probability(o['Heart Disease'])
     n_d = parse_probability(n['Diabetes'])
     n_c = parse_probability(n['Heart Disease'])
-    
-    # Check for meaningful improvement in either risk without worsening the other
-    diabetes_improved = n_d < o_d - 0.03  # Slightly more lenient threshold
-    heart_improved = n_c < o_c - 0.03
-    
-    # Also consider if stress was reduced significantly
-    stress_reduced = ('Stress_Level' in new and 
-                     new['Stress_Level'] < orig.get('Stress_Level', 10) - 1)
-    
-    return ((diabetes_improved and n_c <= o_c + 0.01) or
-            (heart_improved and n_d <= o_d + 0.01) or
-            stress_reduced)
+    return ((n_d < o_d - 0.05 and n_c <= o_c + 0.01) or
+            (n_c < o_c - 0.05 and n_d <= o_d + 0.01))
 
 def get_patient_medications(patient_id: str) -> List[Medication]:
     try:
@@ -222,62 +200,63 @@ def generate_recommendations(state: State) -> dict:
         meds_info.append(info)
 
     if sent_for == 0:
-        target_bmi = max(float(pd.get('BMI', 25)) - 1 if pd.get('BMI') else 25, 18.5)
+        # Determine encouragement message based on glucose levels
+        glucose = pd.get('glucose', 0)
+        encouragement = "You're on the right track with your glucose levels!" if 70 <= glucose <= 100 else "Let's work together to improve your glucose levels with these recommendations!"
+
+        # Determine exercise type and intensity based on BMI and Age
+        bmi = pd.get('BMI', 25.0)
+        age = pd.get('Age', 40)
+        
+        if bmi > 30:  # Obese
+            exercise_type = "low-impact aerobic (e.g., brisk walking, swimming)"
+            intensity = "moderate (50-70% max heart rate)"
+        elif 25 <= bmi <= 30:  # Overweight
+            exercise_type = "mixed aerobic and strength training"
+            intensity = "moderate to vigorous (60-80% max heart rate)"
+        else:  # Normal BMI
+            exercise_type = "aerobic and resistance training"
+            intensity = "vigorous (70-85% max heart rate)"
+        
+        # Adjust intensity for age
+        if age > 65:
+            intensity = "light to moderate (40-60% max heart rate)"
+        elif age < 30:
+            intensity = intensity.replace("moderate", "vigorous") if "moderate" in intensity else intensity
+
+        # Include stress management if stress level is high
+        stress_level = pd.get('Stress_Level', 0)
+        stress_management = []
+        if stress_level > 7:
+            stress_management = ["Practice 10 minutes of daily mindfulness or meditation to reduce stress"]
+
         instruction = (
-            "Provide up to five lifestyle recommendations in 'patient_recommendations' using POSITIVE, ENCOURAGING language. "
-            "If the patient is doing well in any area, acknowledge this first before suggesting small improvements.\n"
-            
-            "For the exercise plan (in 'exercise_plan'), it MUST be personalized based on:\n"
-            "- Current BMI: {bmi} (target BMI: {target_bmi})\n"
-            "- Age: {age}\n"
-            "- Stress level: {stress_level}/10\n"
-            "The plan must include:\n"
-            "- 'type': Specific activities (e.g., walking, swimming)\n"
-            "- 'intensity': Light/Moderate/Vigorous based on fitness level\n"
-            "- 'duration': Minutes per session\n"
-            "- 'frequency': Sessions per week\n"
-            "- 'progression': How to gradually increase intensity\n"
-            "- 'stress_reduction': Yoga/breathing exercises if stress > 5\n"
-            
-            "For the diet plan (in 'diet_plan'), it MUST:\n"
-            "- Be culturally appropriate for the patient\n"
-            "- Include specific food examples\n"
-            "- Specify portion sizes\n"
-            "- Include hydration goals\n"
-            
-            "Example JSON output format:\n"
+            f"Provide up to five lifestyle and behavior change recommendations in 'patient_recommendations'. Start with an encouragement message: '{encouragement}'.\n"
+            f"The exercise recommendations must include physical activity with type '{exercise_type}' and intensity '{intensity}' based on patient's BMI ({bmi}) and age ({age}).\n"
+            f"{'Include stress management recommendations: ' + ', '.join(stress_management) if stress_management else ''}\n"
+            "You MUST provide a diet plan tailored for Egyptian patients in 'diet_plan', which must be a dictionary with 'description' (string describing the diet, including Egyptian foods), 'calories' (integer, daily calorie target based on BMI), and 'meals' (list of strings, example meals).\n"
+            "You MUST provide an exercise plan in 'exercise_plan', which must be a dictionary with 'type' (string, e.g., '{exercise_type}'), 'intensity' (string, e.g., '{intensity}'), 'duration' (integer, minutes per session), 'frequency' (integer, sessions per week).\n"
+            "You MUST provide nutrition targets in 'nutrition_targets', which must be a dictionary with target values for relevant metrics, e.g., 'target_BMI', 'target_glucose', etc.\n"
+            "Set 'doctor_recommendations' to null.\n"
+            "**Critical Instruction:** Consider the patient's current medications: {medications}. Ensure no conflicts with these medications.\n"
+            "Here's an example of the expected JSON output:\n"
             "{{\n"
-            "  \"patient_recommendations\": [\n"
-            "    \"You're on the right track with your physical activity! Let's try adding 10 more minutes per day.\",\n"
-            "    \"Your diet is good! Consider adding more leafy greens like spinach.\"\n"
-            "  ],\n"
-            "  \"diet_plan\": {{\n"
-            "    \"description\": \"Balanced diet with controlled portions\",\n"
-            "    \"calories\": 2000,\n"
-            "    \"meals\": [\"Oatmeal (1 cup)\", \"Grilled chicken (1 piece) with brown rice (1/2 cup)\"],\n"
-            "    \"hydration\": \"8 glasses of water daily\"\n"
-            "  }},\n"
-            "  \"exercise_plan\": {{\n"
-            "    \"type\": \"Walking + stretching\",\n"
-            "    \"intensity\": \"Moderate\",\n"
-            "    \"duration\": 30,\n"
-            "    \"frequency\": 5,\n"
-            "    \"progression\": \"Add 5 minutes weekly until reaching 45 minutes\",\n"
-            "    \"stress_reduction\": \"10 minutes deep breathing daily\"\n"
-            "  }},\n"
-            "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}}\n"
+            "  \"patient_recommendations\": [\"{encouragement}\", \"Engage in {exercise_type} at {intensity}\", \"Reduce sugar consumption\"],\n"
+            "  \"diet_plan\": {{\"description\": \"A balanced diet with Egyptian staples like ful medames and koshari\", \"calories\": 2000, \"meals\": [\"Ful medames with bread\", \"Grilled chicken with rice\"]}},\n"
+            "  \"exercise_plan\": {{\"type\": \"{exercise_type}\", \"intensity\": \"{intensity}\", \"duration\": 30, \"frequency\": 5}},\n"
+            "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}},\n"
+            "  \"doctor_recommendations\": null\n"
             "}}"
         ).format(
-            bmi=pd.get('BMI', 'N/A'),
-            target_bmi=target_bmi,
-            age=pd.get('Age', 'N/A'),
-            stress_level=pd.get('Stress_Level', 0)
+            medications=", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]),
+            encouragement=encouragement,
+            exercise_type=exercise_type,
+            intensity=intensity
         )
     elif sent_for == 1:
         instruction = (
             "Provide a comprehensive, personalized cardiology recommendation in 'doctor_recommendations' based on the patient's data. "
             "Structure your response as a list of strings (not dictionaries), with each string representing one recommendation section:\n"
-           
             "1. Key Risk Factors: (no mention for age) List the patient's specific cardiovascular risk factors\n"
             "2. Recommended Diagnostic Tests: Specify necessary labs/tests with target ranges,Tiered by urgency (emergent/urgent/elective)\n"
             "3. Medication Considerations: \n"
@@ -472,12 +451,8 @@ async def get_recommendations(patient_id: str, sent_for: Optional[int] = 0):
     # Get available medicines from database
     available_medicines = get_available_medicines()
 
-    # Safely handle blood pressure comparison
-    blood_pressure = patient.get("bloodPressure")
-    hypertension = 1 if blood_pressure is not None and blood_pressure > 130 else 0
-
     patient_data = {
-        "Blood_Pressure": blood_pressure,
+        "Blood_Pressure": patient.get('bloodPressure'),
         "Age": patient.get('anchorAge'),
         "Exercise_Hours_Per_Week": patient.get('exerciseHoursPerWeek'),
         "Diet":  patient.get('diet'),
@@ -485,7 +460,7 @@ async def get_recommendations(patient_id: str, sent_for: Optional[int] = 0):
         "Stress_Level": patient.get('stressLevel'),
         "glucose": patient.get('glucose'),
         "BMI": patient.get('bmi'),
-        "hypertension": hypertension,
+        "hypertension":  1 if patient.get("bloodPressure", 0) > 130 else 0,
         "is_smoking": patient.get('isSmoker'),
         "hemoglobin_a1c": patient.get('hemoglobinA1c'),
         "Diabetes_pedigree": patient.get('diabetesPedigree'),
