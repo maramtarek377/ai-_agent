@@ -6,7 +6,7 @@ from datetime import date
 from typing import TypedDict, Optional, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from bson import ObjectId, SON
+from bson import ObjectId
 from pymongo import MongoClient
 import requests
 from langgraph.graph import StateGraph, START, END
@@ -230,7 +230,7 @@ def generate_recommendations(state: State) -> dict:
             "{{\n"
             "  \"patient_recommendations\": [\"Increase water intake\", \"Reduce sugar consumption\"],\n"
             "  \"diet_plan\": {{\"description\": \"A balanced diet with Egyptian staples like ful medames and koshari\", \"calories\": 2000, \"meals\": [\"Ful medames with bread\", \"Grilled chicken with rice\"]}},\n"
-            " \"exercise_plan\": {\"type\": \"aerobic and strength mix\", \"duration\": 45, \"frequency\": 5, \"sessions\":[{"day":"Monday","activity":"Jogging","duration_minutes":30}, ...]},\n"
+            "  \"exercise_plan\": [{\"type\": \"aerobic\", \"duration\": 30, \"frequency\": 5, \"description\": \"Jogging in the park\"}, {\"type\": \"strength training\", \"duration\": 45, \"frequency\": 3, \"description\": \"Weight lifting at gym\"}],\n"
             "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}},\n"
             "  \"doctor_recommendations\": null\n"
             "}}"
@@ -460,12 +460,12 @@ async def get_recommendations(patient_id: str, sent_for: Optional[int] = 0):
         "Blood_Pressure": patient.get('bloodPressure'),
         "Age": patient.get('anchorAge'),
         "Exercise_Hours_Per_Week": patient.get('exerciseHoursPerWeek'),
-        "Diet":  patient.get('diet'),
+        "Diet": patient.get('diet'),
         "Sleep_Hours_Per_Day": patient.get('sleepHoursPerDay'),
         "Stress_Level": patient.get('stressLevel'),
         "glucose": patient.get('glucose'),
         "BMI": patient.get('bmi'),
-        "hypertension":  1 if patient.get("bloodPressure", 0) > 130 else 0,
+        "hypertension": 1 if patient.get("bloodPressure", 0) > 130 else 0,
         "is_smoking": patient.get('isSmoker'),
         "hemoglobin_a1c": patient.get('hemoglobinA1c'),
         "Diabetes_pedigree": patient.get('diabetesPedigree'),
@@ -487,4 +487,6 @@ async def get_recommendations(patient_id: str, sent_for: Optional[int] = 0):
     return result
 
 if __name__ == '__main__':
-    uvicorn.run(app, host='0.0.0.0', port=8000)
+    # Use the PORT environment variable for Render compatibility, default to 8000 for local development
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host='0.0.0.0', port=port)
