@@ -451,16 +451,22 @@ async def get_recommendations(patient_id: str, sent_for: Optional[int] = 0):
     # Get available medicines from database
     available_medicines = get_available_medicines()
 
+    # Safely parse blood pressure
+    blood_pressure = patient.get('bloodPressure')
+    hypertension = 0
+    if isinstance(blood_pressure, (int, float)) and blood_pressure is not None:
+        hypertension = 1 if blood_pressure > 130 else 0
+
     patient_data = {
-        "Blood_Pressure": patient.get('bloodPressure'),
+        "Blood_Pressure": blood_pressure,
         "Age": patient.get('anchorAge'),
         "Exercise_Hours_Per_Week": patient.get('exerciseHoursPerWeek'),
-        "Diet":  patient.get('diet'),
+        "Diet": patient.get('diet'),
         "Sleep_Hours_Per_Day": patient.get('sleepHoursPerDay'),
         "Stress_Level": patient.get('stressLevel'),
         "glucose": patient.get('glucose'),
         "BMI": patient.get('bmi'),
-        "hypertension":  1 if patient.get("bloodPressure", 0) > 130 else 0,
+        "hypertension": hypertension,
         "is_smoking": patient.get('isSmoker'),
         "hemoglobin_a1c": patient.get('hemoglobinA1c'),
         "Diabetes_pedigree": patient.get('diabetesPedigree'),
