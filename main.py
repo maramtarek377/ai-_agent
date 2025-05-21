@@ -178,204 +178,99 @@ def risk_assessment(state: State) -> dict:
     return {'risk_probabilities': probs}
 
 def generate_recommendations(state: State) -> dict:
-    pd = state['patient_data']
+    inp = state['patient_data']  # Use patient_data directly for flexibility
     probs = state['risk_probabilities']['Health Risk Probabilities']
+    meds = state['current_medications']
     sent_for = state['sent_for']
-    medications = state.get('current_medications', [])
-    available_meds = state.get('available_medicines', [])
-
-    # Filter medicines by specialization based on sent_for
-    if sent_for == 1:  # Cardiology
-        relevant_meds = [m for m in available_meds if 'cardiology' in m.specialization.lower()]
-    elif sent_for == 2:  # Endocrinology
-        relevant_meds = [m for m in available_meds if 'endocrinology' in m.specialization.lower()]
-    else:
-        relevant_meds = []
-
-    meds_info = []
-    for med in relevant_meds:
-        info = f"- {med.name}"
-        if med.description:
-            info += f" (description: {med.description})"
-        meds_info.append(info)
+    
+    # Dynamically construct the input data list based on available inputs
+    input_lines = []
+    if inp.get('hypertension') is not None:
+        input_lines.append(f"- Hypertension: {'yes' if inp['hypertension'] == 1 else 'no'}")
+    if inp.get('Diet'):
+        input_lines.append(f"- Diet quality: {inp['Diet']}")
+    if inp.get('Stress_Level'):
+        input_lines.append(f"- Stress level: {inp['Stress_Level']}")
+    if inp.get('Exercise_Hours_Per_Week') is not None:
+        input_lines.append(f"- Exercise hours per week: {inp['Exercise_Hours_Per_Week']}")
+    if inp.get('glucose'):
+        input_lines.append(f"- Glucose level: {inp['glucose']} mg/dL")
+    if probs.get('Heart Disease'):
+        input_lines.append(f"- CVD risk: {probs['Heart Disease']}")
+    if probs.get('Diabetes'):
+        input_lines.append(f"- Diabetes risk: {probs['Diabetes']}")
+    
+    input_data_str = "\n".join(input_lines) if input_lines else "No specific data provided."
 
     if sent_for == 0:
-        instruction = (
-            "Provide up to five lifestyle and behavior change recommendations in 'patient_recommendations'.\n"
-            "When providing feedback to the patient:\n"
-            "1. If they're already doing something right (like good exercise habits or healthy diet), "
-            "just mention they're on the right track without excessive praise\n"
-            "2. For areas needing improvement, provide constructive, encouraging suggestions\n"
-            "\n"
-            "Additionally, you MUST provide:\n"
-            "1. A diet plan tailored for Egyptian patients in 'diet_plan', which must be a dictionary with:\n"
-            "   - 'description' (string describing the diet, including Egyptian foods)\n"
-            "   - 'calories' (integer, daily calorie target)\n"
-            "   - 'meals' (list of strings, example meals)\n"
-            "\n"
-            "2. An exercise plan in 'exercise_plan', which must be a dictionary with:\n"
-            "   - 'type' (string, e.g., 'aerobic', 'strength training' - must be appropriate for the patient's age and BMI)\n"
-            "   - 'intensity' (string: 'light', 'moderate', or 'vigorous' based on:\n"
-            "      - BMI: if >30 'light', 25-30 'moderate', <25 can be 'moderate-to-vigorous'\n"
-            "      - Age: if >60 reduce intensity by one level\n"
-            "   - 'duration' (integer, minutes per session)\n"
-            "   - 'frequency' (integer, sessions per week)\n"
-            "   - 'notes' (any special considerations)\n"
-            "\n"
-            "3. Nutrition targets in 'nutrition_targets', which must be a dictionary with:\n"
-            "   - 'target_BMI' (realistic target based on current BMI)\n"
-            "   - 'target_glucose'\n"
-            "   - other relevant metrics\n"
-            "\n"
-            "4. If patient has high stress levels (>5 on 1-10 scale), include a stress reduction plan with:\n"
-            "   - Relaxation techniques\n"
-            "   - Suggested activities\n"
-            "   - Sleep improvement tips\n"
-            "\n"
-            "Set 'doctor_recommendations' to null.\n"
-            "Consider the patient's current medications: {medications}. Ensure no conflicts.\n"
-            "\n"
-            "Example JSON output format:\n"
-            "{{\n"
-            "  \"patient_recommendations\": [\n"
-            "    \"You're on the right track with your current water intake\",\n"
-            "    \"Consider reducing sugar consumption gradually\"\n"
-            "  ],\n"
-            "  \"diet_plan\": {{\n"
-            "    \"description\": \"Balanced diet with Egyptian staples like ful medames and koshari\",\n"
-            "    \"calories\": 2000,\n"
-            "    \"meals\": [\"Ful medames with bread\", \"Grilled chicken with rice\"]\n"
-            "  }},\n"
-            "  \"exercise_plan\": {{\n"
-            "    \"type\": \"aerobic\",\n"
-            "    \"intensity\": \"moderate\",\n"
-            "    \"duration\": 30,\n"
-            "    \"frequency\": 5,\n"
-            "    \"notes\": \"Start slow if you're new to exercise\"\n"
-            "  }},\n"
-            "  \"nutrition_targets\": {{\n"
-            "    \"target_BMI\": 25.0,\n"
-            "    \"target_glucose\": 100\n"
-            "  }},\n"
-            "  \"doctor_recommendations\": null\n"
-            "}}"
-        ).format(medications=", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]))
-    elif sent_for == 1:
-        instruction = (
-            "Provide a comprehensive, personalized cardiology recommendation in 'doctor_recommendations' based on the patient's data. "
-            "Structure your response as a list of strings (not dictionaries), with each string representing one recommendation section:\n"
-           
-            "1. Key Risk Factors: (no mention for age) List the patient's specific cardiovascular risk factors\n"
-            "2. Recommended Diagnostic Tests: Specify necessary labs/tests with target ranges,Tiered by urgency (emergent/urgent/elective)\n"
-            "3. Medication Considerations: \n"
-            "   - First list the patient's current medications with dosages: {medications_list}\n"
-            "   - Then suggest potential new medications with cautions\n"
-            "   - IMPORTANT: Do NOT recommend medications the patient is already taking\n"
-            "   - Check for contraindications with current medications\n"
-            "   - Include dosage guidelines and monitoring requirements\n"
-            "   - Drug titration schedules\n"
-            "   - Alternatives if first-line fails\n"
-            "   - Monitoring parameters (e.g., K+ for ACEi)\n"
-            "4. Monitoring Plan: Recommend follow-up frequency and parameters,**Follow-up**: Specific to intervention \n"
-            "5. Red Flags: Symptoms requiring immediate action\n"
-            "6. Avoid:\n"
-            "Here's an example of the expected JSON output:\n"
-            "{{\n"
-            "  \"doctor_recommendations\": [\n"
-            "    \"Key Risk Factors: Hypertension (BP 145/92), LDL 132, diabetes risk 32%, family history of CVD\",\n"
-            "    \"Diagnostics: Fasting lipid panel (target LDL < 70), hs-CRP, echocardiogram\",\n"
-            "    \"Medication Considerations: \\nCurrent Medications:\\n- Atorvastatin 20mg daily\\n- Metformin 500mg BID\\n\\nRecommended Additions:\\n- Consider low-dose aspirin (75mg daily) if no contraindications\\n- Monitor for GI bleeding\\n- Avoid NSAIDs due to potential interaction with aspirin\",\n"
-            "    \" Red Flags: Symptoms requiring immediate action\",\n"
-            "    \"Avoid: Repeating current meds without analysis,personalized lifestyle advice\",\n"
-            "  ]\n"
-            "}}\n\n"
-            "Personalize ALL recommendations based on:\n"
-            "- Current vitals: BP {bp}, BMI {bmi}, glucose {glucose}\n"
-            "- Risk scores: ASCVD risk {cvd_risk}%, diabetes risk {diabetes_risk}%\n"
-            "- Comorbidities: {comorbidities}\n"
-            "- Lifestyle factors: {exercise}, {diet}, {smoking_status}\n"
-            "- Current medications: {medications_count} medications\n"
-            "- Available Cardiology Medications: {available_meds}\n\n"
-            "Set 'patient_recommendations', 'diet_plan', 'exercise_plan', 'nutrition_targets' to null."
+        # Dynamic prompt for patient recommendations
+        prompt = (
+            "You are a health advisor. Provide personalized exercise and diet recommendations in JSON format "
+            "with 'patient_recommendations', 'diet_plan', 'exercise_plan', 'nutrition_targets'. "
+            "Based on the following patient data:\n"
+            f"{input_data_str}\n"
+            "The patient is from Egypt, so ensure the advice is culturally appropriate, incorporating local foods "
+            "and habits where possible. If some data is missing, provide general advice or make reasonable assumptions. "
+            "In your response, include:\n"
+            "1. Exercise recommendations, including a suggested target for exercise hours per week\n"
+            "2. Diet recommendations, suggesting specific dietary changes and incorporating Egyptian cuisine\n"
+            "3. Target values for key health metrics (e.g., glucose level, blood pressure) based on the patient's "
+            "current data and health goals\n"
+            "Current medications: "
+            f"{', '.join([f'{m.medicationName} {m.dosage}' for m in meds]) or 'None'}\n"
+            "Ensure the advice is practical, encouraging, and tailored to the patient's situation. Return only JSON."
+        )
+    elif sent_for == 1:  # Cardiology
+        prompt = (
+            "Provide JSON with 'doctor_recommendations' for cardiology. "
+            "Key metrics: BP {bp}, BMI {BMI}, LDL {ldl}, diabetes risk {diab}%, CVD risk {cvd}%. "
+            "Current meds: {meds}. Available cardiology meds: {available_meds}. "
+            "Include: 1) Key risk factors, 2) Diagnostic tests needed, 3) Medication adjustments, "
+            "4) Monitoring plan, 5) Red flags. Return only JSON."
         ).format(
-            bp=pd.get('Blood_Pressure', 'N/A'),
-            bmi=pd.get('BMI', 'N/A'),
-            glucose=pd.get('glucose', 'N/A'),
-            cvd_risk=probs['Heart Disease'],
-            diabetes_risk=probs['Diabetes'],
-            comorbidities="Prediabetes" if float(probs['Diabetes'].strip('%')) > 25 else "None noted",
-            exercise=f"{pd.get('Exercise_Hours_Per_Week', 0)} hrs/week",
-            diet=pd.get('Diet', 'Unknown'),
-            smoking_status="Smoker" if pd.get('is_smoking') else "Non-smoker",
-            medications_list="\n- ".join([f"{m.medicationName} {m.dosage}" + (f" ({m.frequency})" if m.frequency else "") for m in medications]),
-            medications_count=len(medications),
-            medications=", ".join([f"{m.medicationName}" for m in medications]),
-            available_meds="\n".join(meds_info) if meds_info else "No specific cardiology medications in database")
-    elif sent_for == 2:
-        instruction = (
-            "Provide up to three medical action recommendations for an endocrinologist in 'doctor_recommendations'. "
-            "Structure as a list of strings (not dictionaries) with:\n"
-            "1. Key metabolic risk factors\n"
-            "2. Recommended diagnostic tests with targets\n"
-            "3. Medication considerations: \n"
-            "   - First list current diabetes/endocrine medications: {medications_list}\n"
-            "   - Then suggest potential medication adjustments or additions\n"
-            "   - Do NOT recommend medications already being taken\n"
-            "   - Check for contraindications with current regimen\n"
-            "4. Monitoring plan\n"
-            "5. Evidence basis\n\n"
-            "Here's an example of the expected JSON output:\n"
-            "{{\n"
-            "  \"doctor_recommendations\": [\n"
-            "    \"Key metabolic risk factors: Elevated glucose {glucose}, HbA1c {hba1c}, BMI {bmi}\",\n"
-            "    \"Diagnostics: Fasting glucose (target < 100), HbA1c (target < 5.7%)\",\n"
-            "    \"Medication Considerations: \\nCurrent Medications:\\n- Metformin 500mg BID\\n\\nRecommended Adjustments:\\n- Consider increasing Metformin to 1000mg BID if tolerated\\n- Add GLP-1 agonist if no contraindications\",\n"
-            "    \"Monitoring: Follow-up in 1 month for glucose check, repeat HbA1c in 3 months\",\n"
-            "  ]\n"
-            "}}\n\n"
-            "Set 'patient_recommendations', 'diet_plan', 'exercise_plan', 'nutrition_targets' to null."
+            bp=inp.get('Blood_Pressure', 'unknown'),
+            BMI=inp.get('BMI', 'unknown'),
+            ldl=inp.get('ld_value', 'unknown'),
+            diab=probs.get('Diabetes', 'unknown'),
+            cvd=probs.get('Heart Disease', 'unknown'),
+            meds="\n".join([f"- {m.medicationName} {m.dosage}" for m in meds]) or "None",
+            available_meds="\n".join([f"- {m.name}" for m in state['available_medicines'] if 'cardiology' in m.specialization.lower()]) or "None"
+        )
+    elif sent_for == 2:  # Endocrinology
+        prompt = (
+            "Provide JSON with 'doctor_recommendations' for endocrinology. "
+            "Key metrics: glucose {glucose}, HbA1c {hba1c}, BMI {BMI}, diabetes risk {diab}%. "
+            "Current meds: {meds}. Available endocrine meds: {available_meds}. "
+            "Include: 1) Metabolic risk factors, 2) Diagnostic tests, 3) Medication adjustments, "
+            "4) Monitoring plan. Return only JSON."
         ).format(
-            medications_list="\n- ".join([f"{m.medicationName} {m.dosage}" + (f" ({m.frequency})" if m.frequency else "") for m in medications]),
-            medications=", ".join([f"{m.medicationName}" for m in medications]),
-            glucose=pd.get('glucose', 'N/A'),
-            hba1c=pd.get('hemoglobin_a1c', 'N/A'),
-            bmi=pd.get('BMI', 'N/A'),
-            available_meds="\n".join(meds_info) if meds_info else "No specific endocrinology medications in database")
+            glucose=inp.get('glucose', 'unknown'),
+            hba1c=inp.get('hemoglobin_a1c', 'unknown'),
+            BMI=inp.get('BMI', 'unknown'),
+            diab=probs.get('Diabetes', 'unknown'),
+            meds="\n".join([f"- {m.medicationName} {m.dosage}" for m in meds]) or "None",
+            available_meds="\n".join([f"- {m.name}" for m in state['available_medicines'] if 'endocrinology' in m.specialization.lower()]) or "None"
+        )
     else:
         raise HTTPException(status_code=400, detail='Invalid sent_for value')
 
-    prompt = (
-        f"Based on the following patient profile and risk probabilities, generate recommendations.\n"
-        f"Patient Data: {pd}\n"
-        f"Current Medications: {[f'{m.medicationName} {m.dosage}' + (f' ({m.frequency})' if m.frequency else '') for m in medications]}\n"
-        f"Diabetes Risk: {probs['Diabetes']}\n"
-        f"CVD Risk: {probs['Heart Disease']}\n\n"
-        f"{instruction}\n"
-        f"Return only the JSON object, without any additional text or explanations."
-    )
     try:
-        response = llm.invoke(prompt)
-        json_str = re.search(r'\{.*\}', response.content, re.DOTALL).group(0)
-        json_data = json.loads(json_str)
+        resp = llm.invoke(prompt)
+        json_str = re.search(r'\{.*\}', resp.content, re.DOTALL).group(0)
+        data = json.loads(json_str)
         
-        # Convert any dictionary items in recommendations to strings
-        if 'doctor_recommendations' in json_data and json_data['doctor_recommendations']:
+        # Process doctor recommendations if present
+        if 'doctor_recommendations' in data and data['doctor_recommendations']:
             processed_recs = []
-            for rec in json_data['doctor_recommendations']:
+            for rec in data['doctor_recommendations']:
                 if isinstance(rec, dict):
-                    # Convert dict to string representation
                     key = next(iter(rec))
-                    processed_recs.append(f"{key}: {', '.join(rec[key]) if isinstance(rec[key], list) else rec[key]}")
+                    processed_recs.append(f"{key}: {rec[key]}")
                 else:
                     processed_recs.append(rec)
-            json_data['doctor_recommendations'] = processed_recs
+            data['doctor_recommendations'] = processed_recs
             
-        recs = Recommendations(**json_data)
-        
-        if sent_for == 0 and (not recs.diet_plan or not recs.exercise_plan):
-            raise ValueError("Missing required recommendation fields")
-            
-        return {'recommendations': recs}
+        return {'recommendations': Recommendations(**data)}
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse LLM response: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to parse recommendation response")
