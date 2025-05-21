@@ -201,8 +201,10 @@ def generate_recommendations(state: State) -> dict:
 
     if sent_for == 0:
         # Determine encouragement message based on glucose levels
-        glucose = pd.get('glucose', 0)
-        encouragement = "You're on the right track with your glucose levels!" if 70 <= glucose <= 100 else "Let's work together to improve your glucose levels with these recommendations!"
+        glucose = pd.get('glucose')
+        encouragement = "Let's work together to improve your glucose levels with these recommendations!"
+        if isinstance(glucose, (int, float)) and glucose is not None:
+            encouragement = "You're on the right track with your glucose levels!" if 70 <= glucose <= 100 else "Let's work together to improve your glucose levels with these recommendations!"
 
         # Determine exercise type and intensity based on BMI and Age
         bmi = pd.get('BMI', 25.0)
