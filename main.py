@@ -241,8 +241,52 @@ def build_patient_profile(input_values: dict) -> str:
     return "\n".join(profile)
 
 def generate_patient_prompt(input_values: dict, risk_probs: dict, medications: List[Medication]) -> str:
-    """Generate dynamic prompt for patient recommendations"""
+    """Generate dynamic prompt for patient recommendations with personalized diet"""
     patient_profile = build_patient_profile(input_values)
+    
+    # Determine diet requirements based on patient conditions
+    diet_requirements = []
+    
+    # Gender-based requirements
+    gender = input_values.get('gender', '')
+    if gender == 'M':
+        diet_requirements.append("higher protein needs")
+    elif gender == 'F':
+        diet_requirements.append("adequate iron and calcium")
+    
+    # Age-based requirements
+    age = input_values.get('Age', 0)
+    if age > 50:
+        diet_requirements.append("higher fiber and calcium")
+    if age > 65:
+        diet_requirements.append("easier to digest foods")
+    
+    # Condition-based requirements
+    if input_values.get('hypertension'):
+        diet_requirements.append("low sodium (<1500mg/day)")
+    
+    diabetes_risk = parse_probability(risk_probs['Diabetes'])
+    if diabetes_risk > 0.25:  # >25% risk
+        diet_requirements.append("low glycemic index foods")
+        if diabetes_risk > 0.5:  # >50% risk
+            diet_requirements.append("controlled carbohydrate intake")
+    
+    cvd_risk = parse_probability(risk_probs['Heart Disease'])
+    if cvd_risk > 0.2:  # >20% risk
+        diet_requirements.append("heart-healthy fats")
+        diet_requirements.append("low saturated fat")
+    
+    bmi = input_values.get('BMI', 0)
+    if bmi >= 30:
+        diet_requirements.append("calorie-controlled for weight loss")
+    elif bmi >= 25:
+        diet_requirements.append("moderate calorie reduction")
+    
+    # Build diet focus description
+    if diet_requirements:
+        diet_focus = f"Focus on: {', '.join(diet_requirements)}"
+    else:
+        diet_focus = "Balanced nutrition"
     
     prompt = f"""
     Generate personalized health recommendations for an Egyptian patient based on this profile:
@@ -262,10 +306,24 @@ def generate_patient_prompt(input_values: dict, risk_probs: dict, medications: L
             "Another specific recommendation"
         ],
         "diet_plan": {{
-            "description": "Egyptian-style diet plan considering the patient's health status",
-            "calories": "Daily calorie target based on BMI and activity level",
-            "meals": ["Example Egyptian meal 1", "Example Egyptian meal 2"],
-            "nutrition_focus": "Specific nutrients to focus on based on deficiencies/needs"
+            "description": "Egyptian-style diet plan considering: {diet_focus}",
+            "calories": "Daily calorie target based on: gender {gender}, age {age}, BMI {bmi if bmi else 'N/A'}, activity level",
+            "macronutrients": {{
+                "carbs": "Percentage based on diabetes risk",
+                "protein": "Amount based on gender and age",
+                "fats": "Type and amount based on CVD risk"
+            }},
+            "key_focus": {diet_requirements},
+            "sample_meals": [
+                "Breakfast: Egyptian ful medames with whole wheat bread and vegetables",
+                "Lunch: Grilled fish with brown rice and salad",
+                "Dinner: Lentil soup with whole wheat pita"
+            ],
+            "avoid": [
+                "Foods to avoid based on conditions",
+                "Another item to avoid"
+            ],
+            "hydration": "2-3 liters of water daily"
         }},
         "exercise_plan": {{
             "type": "Exercise types based on fitness level and health conditions",
@@ -281,6 +339,15 @@ def generate_patient_prompt(input_values: dict, risk_probs: dict, medications: L
             "other_targets": "Any other relevant targets"
         }}
     }}
+    
+    Diet should specifically:
+    - Be culturally appropriate Egyptian foods
+    - Account for gender-specific nutritional needs
+    - Adjust for age-related requirements
+    - Address hypertension if present (low sodium)
+    - Be appropriate for diabetes risk level
+    - Support cardiovascular health if at risk
+    - Help with weight management based on BMI
     
     Recommendations should:
     - Be culturally appropriate for Egypt
