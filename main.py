@@ -172,89 +172,198 @@ def get_available_medicines() -> List[Medicine]:
         logger.error(f"Failed to fetch medicines database: {str(e)}")
         return []
 
+def build_patient_profile(input_values: dict) -> str:
+    """Construct a detailed patient profile string from input values"""
+    profile = []
+    
+    # Basic demographics
+    if input_values.get('Age'):
+        profile.append(f"Age: {input_values['Age']} years")
+    if input_values.get('gender'):
+        profile.append(f"Gender: {'Male' if input_values['gender'] == 'M' else 'Female'}")
+    
+    # Health metrics
+    if input_values.get('BMI'):
+        bmi = input_values['BMI']
+        bmi_status = ""
+        if bmi < 18.5: bmi_status = " (Underweight)"
+        elif 18.5 <= bmi < 25: bmi_status = " (Normal)"
+        elif 25 <= bmi < 30: bmi_status = " (Overweight)"
+        else: bmi_status = " (Obese)"
+        profile.append(f"BMI: {bmi}{bmi_status}")
+    
+    if input_values.get('Blood_Pressure'):
+        bp = input_values['Blood_Pressure']
+        bp_status = " (Normal)" if bp <= 120 else " (Elevated)" if bp <= 129 else " (Hypertension)"
+        profile.append(f"Blood Pressure: {bp}{bp_status}")
+    
+    if input_values.get('glucose'):
+        glucose = input_values['glucose']
+        glucose_status = ""
+        if glucose < 100: glucose_status = " (Normal)"
+        elif 100 <= glucose < 126: glucose_status = " (Prediabetes)"
+        else: glucose_status = " (Diabetes)"
+        profile.append(f"Glucose: {glucose}{glucose_status}")
+    
+    # Lifestyle factors
+    if input_values.get('Diet'):
+        diet = input_values['Diet'].lower()
+        if diet == 'healthy': diet_desc = "Healthy diet"
+        elif diet == 'unhealthy': diet_desc = "Unhealthy diet"
+        else: diet_desc = "Average diet"
+        profile.append(diet_desc)
+    
+    if input_values.get('Exercise_Hours_Per_Week'):
+        exercise = input_values['Exercise_Hours_Per_Week']
+        if exercise == 0: ex_desc = "Sedentary (no exercise)"
+        elif exercise < 3: ex_desc = "Light activity"
+        elif exercise < 5: ex_desc = "Moderate activity"
+        else: ex_desc = "Active"
+        profile.append(f"Exercise: {ex_desc} ({exercise} hrs/week)")
+    
+    if input_values.get('Stress_Level'):
+        stress = input_values['Stress_Level']
+        if stress < 4: stress_desc = "Low stress"
+        elif stress < 7: stress_desc = "Moderate stress"
+        else: stress_desc = "High stress"
+        profile.append(f"Stress Level: {stress}/10 ({stress_desc})")
+    
+    # Risk factors
+    if input_values.get('is_smoking'):
+        profile.append("Smoker" if input_values['is_smoking'] else "Non-smoker")
+    
+    if input_values.get('hypertension'):
+        profile.append("Hypertension" if input_values['hypertension'] else "Normal blood pressure")
+    
+    # Regional info
+    profile.append("Region: Egypt")
+    
+    return "\n".join(profile)
+
+def generate_patient_prompt(input_values: dict, risk_probs: dict, medications: List[Medication]) -> str:
+    """Generate dynamic prompt for patient recommendations"""
+    patient_profile = build_patient_profile(input_values)
+    
+    prompt = f"""
+    Generate personalized health recommendations for an Egyptian patient based on this profile:
+    {patient_profile}
+    
+    Health Risks:
+    - Diabetes: {risk_probs['Diabetes']}
+    - Heart Disease: {risk_probs['Heart Disease']}
+    
+    Current Medications:
+    {", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]) if medications else "None"}
+    
+    Provide recommendations in this JSON format:
+    {{
+        "patient_recommendations": [
+            "Specific actionable advice tailored to the patient's profile",
+            "Another specific recommendation"
+        ],
+        "diet_plan": {{
+            "description": "Egyptian-style diet plan considering the patient's health status",
+            "calories": "Daily calorie target based on BMI and activity level",
+            "meals": ["Example Egyptian meal 1", "Example Egyptian meal 2"],
+            "nutrition_focus": "Specific nutrients to focus on based on deficiencies/needs"
+        }},
+        "exercise_plan": {{
+            "type": "Exercise types based on fitness level and health conditions",
+            "intensity": "light/moderate/vigorous based on current fitness",
+            "duration": "Minutes per session",
+            "frequency": "Sessions per week",
+            "progression": "How to progress over time",
+            "precautions": "Any special precautions based on health conditions"
+        }},
+        "nutrition_targets": {{
+            "target_BMI": "Realistic target based on current BMI",
+            "target_glucose": "Target glucose level if applicable",
+            "other_targets": "Any other relevant targets"
+        }}
+    }}
+    
+    Recommendations should:
+    - Be culturally appropriate for Egypt
+    - Account for any health conditions
+    - Be realistic given the patient's current lifestyle
+    - Provide specific, actionable advice
+    - Consider current medications
+    - Address the highest priority health risks first
+    
+    Return ONLY the JSON object, no additional text or explanations.
+    """
+    
+    return prompt.strip()
+
+def generate_doctor_prompt(input_values: dict, risk_probs: dict, medications: List[Medication], 
+                         available_meds: List[Medicine], specialty: str) -> str:
+    """Generate dynamic prompt for specialist recommendations"""
+    patient_profile = build_patient_profile(input_values)
+    
+    # Filter medicines by specialty
+    specialty_meds = [m for m in available_meds if specialty.lower() in m.specialization.lower()]
+    
+    prompt = f"""
+    Generate clinical recommendations for a {specialty} specialist based on this patient profile:
+    {patient_profile}
+    
+    Health Risks:
+    - Diabetes: {risk_probs['Diabetes']}
+    - Heart Disease: {risk_probs['Heart Disease']}
+    
+    Current Medications:
+    {", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]) if medications else "None"}
+    
+    Available {specialty} Medications:
+    {", ".join([m.name for m in specialty_meds]) if specialty_meds else "None"}
+    
+    Provide recommendations in this JSON format:
+    {{
+        "doctor_recommendations": [
+            "Key clinical findings and risk factors",
+            "Recommended diagnostic tests with rationale",
+            "Medication adjustments considering current regimen and available options",
+            "Monitoring plan with follow-up schedule",
+            "Red flags to watch for",
+            "Any contraindications or precautions"
+        ]
+    }}
+    
+    Recommendations should:
+    - Be specific to {specialty} practice
+    - Consider current medications and potential interactions
+    - Prioritize evidence-based interventions
+    - Include monitoring parameters
+    - Note any contraindications
+    
+    Return ONLY the JSON object, no additional text or explanations.
+    """
+    
+    return prompt.strip()
+
 # Graph nodes
 def risk_assessment(state: State) -> dict:
     probs = get_risk_probabilities(state['patient_data'])
     return {'risk_probabilities': probs}
 
 def generate_recommendations(state: State) -> dict:
-    inp = state['patient_data']  # Use patient_data directly for flexibility
-    probs = state['risk_probabilities']['Health Risk Probabilities']
-    meds = state['current_medications']
+    input_values = state['risk_probabilities']['Input Values']
+    risk_probs = state['risk_probabilities']['Health Risk Probabilities']
     sent_for = state['sent_for']
+    medications = state.get('current_medications', [])
+    available_meds = state.get('available_medicines', [])
     
-    # Dynamically construct the input data list based on available inputs
-    input_lines = []
-    if inp.get('hypertension') is not None:
-        input_lines.append(f"- Hypertension: {'yes' if inp['hypertension'] == 1 else 'no'}")
-    if inp.get('Diet'):
-        input_lines.append(f"- Diet quality: {inp['Diet']}")
-    if inp.get('Stress_Level'):
-        input_lines.append(f"- Stress level: {inp['Stress_Level']}")
-    if inp.get('Exercise_Hours_Per_Week') is not None:
-        input_lines.append(f"- Exercise hours per week: {inp['Exercise_Hours_Per_Week']}")
-    if inp.get('glucose'):
-        input_lines.append(f"- Glucose level: {inp['glucose']} mg/dL")
-    if probs.get('Heart Disease'):
-        input_lines.append(f"- CVD risk: {probs['Heart Disease']}")
-    if probs.get('Diabetes'):
-        input_lines.append(f"- Diabetes risk: {probs['Diabetes']}")
-    
-    input_data_str = "\n".join(input_lines) if input_lines else "No specific data provided."
-
-    if sent_for == 0:
-        # Dynamic prompt for patient recommendations
-        prompt = (
-            "You are a health advisor. Provide personalized exercise and diet recommendations in JSON format "
-            "with 'patient_recommendations', 'diet_plan', 'exercise_plan', 'nutrition_targets'. "
-            "Based on the following patient data:\n"
-            f"{input_data_str}\n"
-            "The patient is from Egypt, so ensure the advice is culturally appropriate, incorporating local foods "
-            "and habits where possible. If some data is missing, provide general advice or make reasonable assumptions. "
-            "In your response, include:\n"
-            "1. Exercise recommendations, including a suggested target for exercise hours per week\n"
-            "2. Diet recommendations, suggesting specific dietary changes and incorporating Egyptian cuisine\n"
-            "3. Target values for key health metrics (e.g., glucose level, blood pressure) based on the patient's "
-            "current data and health goals\n"
-            "Current medications: "
-            f"{', '.join([f'{m.medicationName} {m.dosage}' for m in meds]) or 'None'}\n"
-            "Ensure the advice is practical, encouraging, and tailored to the patient's situation. Return only JSON."
-        )
-    elif sent_for == 1:  # Cardiology
-        prompt = (
-            "Provide JSON with 'doctor_recommendations' for cardiology. "
-            "Key metrics: BP {bp}, BMI {BMI}, LDL {ldl}, diabetes risk {diab}%, CVD risk {cvd}%. "
-            "Current meds: {meds}. Available cardiology meds: {available_meds}. "
-            "Include: 1) Key risk factors, 2) Diagnostic tests needed, 3) Medication adjustments, "
-            "4) Monitoring plan, 5) Red flags. Return only JSON."
-        ).format(
-            bp=inp.get('Blood_Pressure', 'unknown'),
-            BMI=inp.get('BMI', 'unknown'),
-            ldl=inp.get('ld_value', 'unknown'),
-            diab=probs.get('Diabetes', 'unknown'),
-            cvd=probs.get('Heart Disease', 'unknown'),
-            meds="\n".join([f"- {m.medicationName} {m.dosage}" for m in meds]) or "None",
-            available_meds="\n".join([f"- {m.name}" for m in state['available_medicines'] if 'cardiology' in m.specialization.lower()]) or "None"
-        )
-    elif sent_for == 2:  # Endocrinology
-        prompt = (
-            "Provide JSON with 'doctor_recommendations' for endocrinology. "
-            "Key metrics: glucose {glucose}, HbA1c {hba1c}, BMI {BMI}, diabetes risk {diab}%. "
-            "Current meds: {meds}. Available endocrine meds: {available_meds}. "
-            "Include: 1) Metabolic risk factors, 2) Diagnostic tests, 3) Medication adjustments, "
-            "4) Monitoring plan. Return only JSON."
-        ).format(
-            glucose=inp.get('glucose', 'unknown'),
-            hba1c=inp.get('hemoglobin_a1c', 'unknown'),
-            BMI=inp.get('BMI', 'unknown'),
-            diab=probs.get('Diabetes', 'unknown'),
-            meds="\n".join([f"- {m.medicationName} {m.dosage}" for m in meds]) or "None",
-            available_meds="\n".join([f"- {m.name}" for m in state['available_medicines'] if 'endocrinology' in m.specialization.lower()]) or "None"
-        )
-    else:
-        raise HTTPException(status_code=400, detail='Invalid sent_for value')
-
     try:
+        if sent_for == 0:  # General patient recommendations
+            prompt = generate_patient_prompt(input_values, risk_probs, medications)
+        elif sent_for == 1:  # Cardiology
+            prompt = generate_doctor_prompt(input_values, risk_probs, medications, available_meds, "Cardiology")
+        elif sent_for == 2:  # Endocrinology
+            prompt = generate_doctor_prompt(input_values, risk_probs, medications, available_meds, "Endocrinology")
+        else:
+            raise HTTPException(status_code=400, detail='Invalid sent_for value')
+        
+        logger.info(f"Generated prompt:\n{prompt}")
         resp = llm.invoke(prompt)
         json_str = re.search(r'\{.*\}', resp.content, re.DOTALL).group(0)
         data = json.loads(json_str)
