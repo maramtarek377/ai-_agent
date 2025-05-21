@@ -283,91 +283,90 @@ def generate_patient_prompt(input_values: dict, risk_probs: dict, medications: L
         diet_requirements.append("moderate calorie reduction")
     
     # Build diet focus description
-    if diet_requirements:
-        diet_focus = f"Focus on: {', '.join(diet_requirements)}"
-    else:
-        diet_focus = "Balanced nutrition"
+    diet_focus = f"Focus on: {', '.join(diet_requirements)}" if diet_requirements else "Balanced nutrition"
     
-    prompt = f"""
-Generate a fully personalized health and nutrition plan for a patient using the profile below:
-
-Patient Profile:
-{patient_profile}
-
-Include the following sections, returning only a JSON object:
-
-1. patient_recommendations:  // List of concise, actionable tips tailored to this individual’s conditions, medications, lifestyle, and priorities (e.g., stress management, sleep hygiene)
-   [
-     "Advice 1",
-     "Advice 2",
-     "..."
-   ]
-
-2. diet_plan:
-   {
-     "description": "Brief overview of the plan and how it meets goals",
-     "daily_calories": {
-       "target": "<kcal> based on gender={gender}, age={age}, BMI={bmi}, activity level={activity_level}",
-       "range": "<min>-<max> kcal"
-     },
-     "macronutrients": {
-       "carbohydrates": {
-         "grams": "<g> (X% of total)",
-         "focus": "adjusted for diabetes risk"
-       },
-       "protein": {
-         "grams": "<g>",
-         "focus": "gender- and age-specific needs"
-       },
-       "fats": {
-         "grams": "<g>",
-         "type": "e.g., MUFA, PUFA",
-         "focus": "heart health and CVD risk"
-       }
-     },
-     "key_focus": {diet_requirements},  // e.g. low sodium, fiber-rich, glycemic control
-     "meals": [  // provide 5 days of varied, culturally diverse, portioned meals in grams
-       {
-         "day": 1,
-         "breakfast": {"item": "...", "grams":  ...},
-         "lunch":     {"item": "...", "grams":  ...},
-         "dinner":    {"item": "...", "grams":  ...},
-         "snacks":    [{"item": "...", "grams": ...}, ...]
-       },
-       // days 2–5, including at least some non-Egyptian dishes for variety
-     ],
-     "avoid": ["...", "..."],
-     "hydration": "<liters> per day"
-   }
-
-3. exercise_plan:
-   {
-     "weekly_schedule": [  // 7-day outline
-       {"day": "Monday",    "activity": "...", "duration_min":  ..., "intensity": "..."},
-       // all days, rest days included
-     ],
-     "type_recommendations": "mix of aerobic, strength, flexibility based on fitness={fitness_level}",
-     "precautions": "...",
-     "progression": "how to increase frequency or intensity over weeks"
-   }
-
-4. nutrition_targets:
-   {
-     "target_BMI": "<value> by <date>",
-     "target_glucose": "<mg/dL range>",
-     "other": {...}
-   }
-
-Requirements:
-- Use all inputs: age, gender, BMI, activity, exercise per week, stress level, sleep, current meds, health risks
-- Focus on macronutrient grams and percentages
-- Provide culturally sensitive choices with at least 30% non-Egyptian dishes
-- Ensure variety: rotate cuisines and ingredients daily
-- Adjust sodium, fiber, glycemic index per condition
-- Return ONLY the JSON object—no extra text
-
-"""  
-    return   prompt.strip()
+    # Build prompt parts separately to avoid deep nesting
+    prompt_parts = [
+        "Generate a fully personalized health and nutrition plan for a patient using the profile below:",
+        "",
+        f"Patient Profile:",
+        patient_profile,
+        "",
+        "Include the following sections, returning only a JSON object:",
+        "",
+        "1. patient_recommendations:  // List of concise, actionable tips tailored to this individual's conditions, medications, lifestyle, and priorities",
+        "   [",
+        '     "Advice 1",',
+        '     "Advice 2",',
+        '     "..."',
+        "   ]",
+        "",
+        "2. diet_plan:",
+        "   {",
+        '     "description": "Brief overview of the plan and how it meets goals",',
+        '     "daily_calories": {',
+        '       "target": "kcal based on gender, age, BMI, activity level",',
+        '       "range": "min-max kcal"',
+        "     },",
+        '     "macronutrients": {',
+        '       "carbohydrates": {',
+        '         "grams": "g (X% of total)",',
+        '         "focus": "adjusted for diabetes risk"',
+        "       },",
+        '       "protein": {',
+        '         "grams": "g",',
+        '         "focus": "gender- and age-specific needs"',
+        "       },",
+        '       "fats": {',
+        '         "grams": "g",',
+        '         "type": "e.g., MUFA, PUFA",',
+        '         "focus": "heart health and CVD risk"',
+        "       }",
+        "     },",
+        f'     "key_focus": {json.dumps(diet_requirements)},',
+        '     "meals": [  // provide 5 days of varied, culturally diverse, portioned meals in grams',
+        "       {",
+        '         "day": 1,',
+        '         "breakfast": {"item": "...", "grams":  ...},',
+        '         "lunch":     {"item": "...", "grams":  ...},',
+        '         "dinner":    {"item": "...", "grams":  ...},',
+        '         "snacks":    [{"item": "...", "grams": ...}, ...]',
+        "       },",
+        "       // days 2-5, including at least some non-Egyptian dishes for variety",
+        "     ],",
+        '     "avoid": ["...", "..."],',
+        '     "hydration": "liters per day"',
+        "   }",
+        "",
+        "3. exercise_plan:",
+        "   {",
+        '     "weekly_schedule": [  // 7-day outline',
+        '       {"day": "Monday",    "activity": "...", "duration_min":  ..., "intensity": "..."},',
+        "       // all days, rest days included",
+        "     ],",
+        '     "type_recommendations": "mix of aerobic, strength, flexibility based on fitness level",',
+        '     "precautions": "...",',
+        '     "progression": "how to increase frequency or intensity over weeks"',
+        "   }",
+        "",
+        "4. nutrition_targets:",
+        "   {",
+        '     "target_BMI": "value by date",',
+        '     "target_glucose": "mg/dL range",',
+        '     "other": {...}',
+        "   }",
+        "",
+        "Requirements:",
+        "- Use all inputs: age, gender, BMI, activity, exercise per week, stress level, sleep, current meds, health risks",
+        "- Focus on macronutrient grams and percentages",
+        "- Provide culturally sensitive choices with at least 30% non-Egyptian dishes",
+        "- Ensure variety: rotate cuisines and ingredients daily",
+        "- Adjust sodium, fiber, glycemic index per condition",
+        "- Return ONLY the JSON object—no extra text",
+        ""
+    ]
+    
+    return "\n".join(prompt_parts)
 
 def generate_doctor_prompt(input_values: dict, risk_probs: dict, medications: List[Medication], 
                          available_meds: List[Medicine], specialty: str) -> str:
@@ -377,43 +376,43 @@ def generate_doctor_prompt(input_values: dict, risk_probs: dict, medications: Li
     # Filter medicines by specialty
     specialty_meds = [m for m in available_meds if specialty.lower() in m.specialization.lower()]
     
-    prompt = f"""
-    Generate clinical recommendations for a {specialty} specialist based on this patient profile:
-    {patient_profile}
+    prompt_parts = [
+        f"Generate clinical recommendations for a {specialty} specialist based on this patient profile:",
+        patient_profile,
+        "",
+        "Health Risks:",
+        f"- Diabetes: {risk_probs['Diabetes']}",
+        f"- Heart Disease: {risk_probs['Heart Disease']}",
+        "",
+        "Current Medications:",
+        f"{', '.join([f'{m.medicationName} ({m.dosage})' for m in medications]) if medications else 'None'}",
+        "",
+        f"Available {specialty} Medications:",
+        f"{', '.join([m.name for m in specialty_meds]) if specialty_meds else 'None'}",
+        "",
+        "Provide recommendations in this JSON format:",
+        "{",
+        '    "doctor_recommendations": [',
+        '        "Key clinical findings and risk factors",',
+        '        "Recommended diagnostic tests with rationale",',
+        '        "Medication adjustments considering current regimen and available options",',
+        '        "Monitoring plan with follow-up schedule",',
+        '        "Red flags to watch for",',
+        '        "Any contraindications or precautions"',
+        '    ]',
+        "}",
+        "",
+        "Recommendations should:",
+        f"- Be specific to {specialty} practice",
+        "- Consider current medications and potential interactions",
+        "- Prioritize evidence-based interventions",
+        "- Include monitoring parameters",
+        "- Note any contraindications",
+        "",
+        "Return ONLY the JSON object, no additional text or explanations."
+    ]
     
-    Health Risks:
-    - Diabetes: {risk_probs['Diabetes']}
-    - Heart Disease: {risk_probs['Heart Disease']}
-    
-    Current Medications:
-    {", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]) if medications else "None"}
-    
-    Available {specialty} Medications:
-    {", ".join([m.name for m in specialty_meds]) if specialty_meds else "None"}
-    
-    Provide recommendations in this JSON format:
-    {{
-        "doctor_recommendations": [
-            "Key clinical findings and risk factors",
-            "Recommended diagnostic tests with rationale",
-            "Medication adjustments considering current regimen and available options",
-            "Monitoring plan with follow-up schedule",
-            "Red flags to watch for",
-            "Any contraindications or precautions"
-        ]
-    }}
-    
-    Recommendations should:
-    - Be specific to {specialty} practice
-    - Consider current medications and potential interactions
-    - Prioritize evidence-based interventions
-    - Include monitoring parameters
-    - Note any contraindications
-    
-    Return ONLY the JSON object, no additional text or explanations.
-    """
-    
-    return prompt.strip()
+    return "\n".join(prompt_parts)
 
 # Graph nodes
 def risk_assessment(state: State) -> dict:
