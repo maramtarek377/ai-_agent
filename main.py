@@ -200,65 +200,71 @@ def generate_recommendations(state: State) -> dict:
         meds_info.append(info)
 
     if sent_for == 0:
-        # Determine encouragement message based on glucose levels
-        glucose = pd.get('glucose')
-        encouragement = "Let's work together to improve your glucose levels with these recommendations!"
-        if isinstance(glucose, (int, float)) and glucose is not None:
-            encouragement = "You're on the right track with your glucose levels!" if 70 <= glucose <= 100 else "Let's work together to improve your glucose levels with these recommendations!"
-
-        # Determine exercise type and intensity based on BMI and Age
-        bmi = pd.get('BMI', 25.0)
-        age = pd.get('Age', 40)
-        
-        if bmi > 30:  # Obese
-            exercise_type = "low-impact aerobic (e.g., brisk walking, swimming)"
-            intensity = "moderate (50-70% max heart rate)"
-        elif 25 <= bmi <= 30:  # Overweight
-            exercise_type = "mixed aerobic and strength training"
-            intensity = "moderate to vigorous (60-80% max heart rate)"
-        else:  # Normal BMI
-            exercise_type = "aerobic and resistance training"
-            intensity = "vigorous (70-85% max heart rate)"
-        
-        # Adjust intensity for age
-        if age > 65:
-            intensity = "light to moderate (40-60% max heart rate)"
-        elif age < 30:
-            intensity = intensity.replace("moderate", "vigorous") if "moderate" in intensity else intensity
-
-        # Include stress management if stress level is high
-        stress_level = pd.get('Stress_Level', 0)
-        stress_management = []
-        if stress_level > 7:
-            stress_management = ["Practice 10 minutes of daily mindfulness or meditation to reduce stress"]
-
         instruction = (
-            f"Provide up to five lifestyle and behavior change recommendations in 'patient_recommendations'. Start with an encouragement message: '{encouragement}'.\n"
-            f"The exercise recommendations must include physical activity with type '{exercise_type}' and intensity '{intensity}' based on patient's BMI ({bmi}) and age ({age}).\n"
-            f"{'Include stress management recommendations: ' + ', '.join(stress_management) if stress_management else ''}\n"
-            "You MUST provide a diet plan tailored for Egyptian patients in 'diet_plan', which must be a dictionary with 'description' (string describing the diet, including Egyptian foods), 'calories' (integer, daily calorie target based on BMI), and 'meals' (list of strings, example meals).\n"
-            "You MUST provide an exercise plan in 'exercise_plan', which must be a dictionary with 'type' (string, e.g., '{exercise_type}'), 'intensity' (string, e.g., '{intensity}'), 'duration' (integer, minutes per session), 'frequency' (integer, sessions per week).\n"
-            "You MUST provide nutrition targets in 'nutrition_targets', which must be a dictionary with target values for relevant metrics, e.g., 'target_BMI', 'target_glucose', etc.\n"
+            "Provide up to five lifestyle and behavior change recommendations in 'patient_recommendations'.\n"
+            "When providing feedback to the patient:\n"
+            "1. If they're already doing something right (like good exercise habits or healthy diet), "
+            "just mention they're on the right track without excessive praise\n"
+            "2. For areas needing improvement, provide constructive, encouraging suggestions\n"
+            "\n"
+            "Additionally, you MUST provide:\n"
+            "1. A diet plan tailored for Egyptian patients in 'diet_plan', which must be a dictionary with:\n"
+            "   - 'description' (string describing the diet, including Egyptian foods)\n"
+            "   - 'calories' (integer, daily calorie target)\n"
+            "   - 'meals' (list of strings, example meals)\n"
+            "\n"
+            "2. An exercise plan in 'exercise_plan', which must be a dictionary with:\n"
+            "   - 'type' (string, e.g., 'aerobic', 'strength training' - must be appropriate for the patient's age and BMI)\n"
+            "   - 'intensity' (string: 'light', 'moderate', or 'vigorous' based on:\n"
+            "      - BMI: if >30 'light', 25-30 'moderate', <25 can be 'moderate-to-vigorous'\n"
+            "      - Age: if >60 reduce intensity by one level\n"
+            "   - 'duration' (integer, minutes per session)\n"
+            "   - 'frequency' (integer, sessions per week)\n"
+            "   - 'notes' (any special considerations)\n"
+            "\n"
+            "3. Nutrition targets in 'nutrition_targets', which must be a dictionary with:\n"
+            "   - 'target_BMI' (realistic target based on current BMI)\n"
+            "   - 'target_glucose'\n"
+            "   - other relevant metrics\n"
+            "\n"
+            "4. If patient has high stress levels (>5 on 1-10 scale), include a stress reduction plan with:\n"
+            "   - Relaxation techniques\n"
+            "   - Suggested activities\n"
+            "   - Sleep improvement tips\n"
+            "\n"
             "Set 'doctor_recommendations' to null.\n"
-            "**Critical Instruction:** Consider the patient's current medications: {medications}. Ensure no conflicts with these medications.\n"
-            "Here's an example of the expected JSON output:\n"
+            "Consider the patient's current medications: {medications}. Ensure no conflicts.\n"
+            "\n"
+            "Example JSON output format:\n"
             "{{\n"
-            "  \"patient_recommendations\": [\"{encouragement}\", \"Engage in {exercise_type} at {intensity}\", \"Reduce sugar consumption\"],\n"
-            "  \"diet_plan\": {{\"description\": \"A balanced diet with Egyptian staples like ful medames and koshari\", \"calories\": 2000, \"meals\": [\"Ful medames with bread\", \"Grilled chicken with rice\"]}},\n"
-            "  \"exercise_plan\": {{\"type\": \"{exercise_type}\", \"intensity\": \"{intensity}\", \"duration\": 30, \"frequency\": 5}},\n"
-            "  \"nutrition_targets\": {{\"target_BMI\": 25.0, \"target_glucose\": 100}},\n"
+            "  \"patient_recommendations\": [\n"
+            "    \"You're on the right track with your current water intake\",\n"
+            "    \"Consider reducing sugar consumption gradually\"\n"
+            "  ],\n"
+            "  \"diet_plan\": {{\n"
+            "    \"description\": \"Balanced diet with Egyptian staples like ful medames and koshari\",\n"
+            "    \"calories\": 2000,\n"
+            "    \"meals\": [\"Ful medames with bread\", \"Grilled chicken with rice\"]\n"
+            "  }},\n"
+            "  \"exercise_plan\": {{\n"
+            "    \"type\": \"aerobic\",\n"
+            "    \"intensity\": \"moderate\",\n"
+            "    \"duration\": 30,\n"
+            "    \"frequency\": 5,\n"
+            "    \"notes\": \"Start slow if you're new to exercise\"\n"
+            "  }},\n"
+            "  \"nutrition_targets\": {{\n"
+            "    \"target_BMI\": 25.0,\n"
+            "    \"target_glucose\": 100\n"
+            "  }},\n"
             "  \"doctor_recommendations\": null\n"
             "}}"
-        ).format(
-            medications=", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]),
-            encouragement=encouragement,
-            exercise_type=exercise_type,
-            intensity=intensity
-        )
+        ).format(medications=", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]))
     elif sent_for == 1:
         instruction = (
             "Provide a comprehensive, personalized cardiology recommendation in 'doctor_recommendations' based on the patient's data. "
             "Structure your response as a list of strings (not dictionaries), with each string representing one recommendation section:\n"
+           
             "1. Key Risk Factors: (no mention for age) List the patient's specific cardiovascular risk factors\n"
             "2. Recommended Diagnostic Tests: Specify necessary labs/tests with target ranges,Tiered by urgency (emergent/urgent/elective)\n"
             "3. Medication Considerations: \n"
@@ -453,22 +459,16 @@ async def get_recommendations(patient_id: str, sent_for: Optional[int] = 0):
     # Get available medicines from database
     available_medicines = get_available_medicines()
 
-    # Safely parse blood pressure
-    blood_pressure = patient.get('bloodPressure')
-    hypertension = 0
-    if isinstance(blood_pressure, (int, float)) and blood_pressure is not None:
-        hypertension = 1 if blood_pressure > 130 else 0
-
     patient_data = {
-        "Blood_Pressure": blood_pressure,
+        "Blood_Pressure": patient.get('bloodPressure'),
         "Age": patient.get('anchorAge'),
         "Exercise_Hours_Per_Week": patient.get('exerciseHoursPerWeek'),
-        "Diet": patient.get('diet'),
+        "Diet":  patient.get('diet'),
         "Sleep_Hours_Per_Day": patient.get('sleepHoursPerDay'),
         "Stress_Level": patient.get('stressLevel'),
         "glucose": patient.get('glucose'),
         "BMI": patient.get('bmi'),
-        "hypertension": hypertension,
+        "hypertension":  1 if patient.get("bloodPressure", 0) > 130 else 0,
         "is_smoking": patient.get('isSmoker'),
         "hemoglobin_a1c": patient.get('hemoglobinA1c'),
         "Diabetes_pedigree": patient.get('diabetesPedigree'),
