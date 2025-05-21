@@ -367,7 +367,7 @@ Requirements:
 - Return ONLY the JSON object—no extra text
 
 """  
-return prompt.strip()
+    return   prompt.strip()
 
 def generate_doctor_prompt(input_values: dict, risk_probs: dict, medications: List[Medication], 
                          available_meds: List[Medicine], specialty: str) -> str:
