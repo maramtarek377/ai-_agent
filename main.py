@@ -285,6 +285,11 @@ def generate_patient_prompt(input_values: dict, risk_probs: dict, medications: L
     # Build diet focus description
     diet_focus = f"Focus on: {', '.join(diet_requirements)}" if diet_requirements else "Balanced nutrition"
     
+    # Get exercise and stress details for exercise plan
+    exercise_per_week = input_values.get('Exercise_Hours_Per_Week', 0)
+    stress_level = input_values.get('Stress_Level', 0)
+    target_bmi = max(input_values.get('BMI', 0) - 1, 18.5)  # Aim for healthy BMI
+    
     # Build prompt parts separately to avoid deep nesting
     prompt_parts = [
         "Generate a fully personalized health and nutrition plan for a patient using the profile below:",
@@ -332,7 +337,7 @@ def generate_patient_prompt(input_values: dict, risk_probs: dict, medications: L
         '         "dinner":    {"item": "...", "grams":  ...},',
         '         "snacks":    [{"item": "...", "grams": ...}, ...]',
         "       },",
-        "       // days 2-5, including at least some arab dishes for variety",
+        "       // days 2-5, including at least some non-Egyptian dishes for variety",
         "     ],",
         '     "avoid": ["...", "..."],',
         '     "hydration": "liters per day"',
@@ -340,20 +345,36 @@ def generate_patient_prompt(input_values: dict, risk_probs: dict, medications: L
         "",
         "3. exercise_plan:",
         "   {",
-        '     "weekly_schedule": [  // 7-day outline',
-        '       {"day": "Monday",    "activity": "...", "duration_min":  ..., "intensity": "..."},',
-        "       // all days, rest days included",
-        "     ],",
-        '     "type_recommendations": "mix of aerobic, strength, flexibility based on fitness level",',
-        '     "precautions": "...",',
-        '     "progression": "how to increase frequency or intensity over weeks"',
+        '     "weekly_schedule": [',
+        '       {',
+        f'         "day": "Monday",',
+        f'         "activity": "Personalized based on age={input_values.get("Age", "N/A")}, BMI={input_values.get("BMI", "N/A")}",',
+        f'         "duration_min": "Based on current fitness level: {exercise_per_week} hrs/week",',
+        f'         "intensity": "Adjusted for health risks: Diabetes={risk_probs["Diabetes"]}, CVD={risk_probs["Heart Disease"]}"',
+        '       },',
+        '       // Include all 7 days with personalized activities',
+        '       // Include at least 2 rest days',
+        '       // Vary intensity based on stress levels and health conditions',
+        '     ],',
+        f'     "type_recommendations": "Mix of aerobic, strength, and flexibility exercises personalized by age={input_values.get("Age", "N/A")}, gender={input_values.get("gender", "N/A")}, health risks={risk_probs}, and target BMI={target_bmi}",',
+        '     "frequency_recommendations": {',
+        f'       "current_weekly_exercise": "{exercise_per_week} sessions/week",',
+        '       "suggestion": "If current frequency is below the target level for her/his profile, provide a progressive plan to increase frequency safely; if adequate, maintain or optimize intensity/duration."',
+        '     },',
+        f'     "stress_management": "Include low-impact, mindfulness-integrated activities (e.g., yoga, tai chi) on high-stress days based on stress_level={stress_level}",',
+        '     "hypertension_precautions": "Low-impact cardio and resistance training with monitored intensity to manage blood pressure; avoid high-intensity intervals if uncontrolled",',
+        '     "progression": "Detailed 4-week progression plan to increase intensity or volume as tolerated",',
+        '     "precautions": "Any special precautions based on health conditions and medication interactions"',
         "   }",
         "",
         "4. nutrition_targets:",
         "   {",
-        '     "target_BMI": "value by date",',
-        '     "target_glucose": "mg/dL range",',
-        '     "other": {...}',
+        f'     "target_BMI": "{target_bmi} by {date.today().replace(year=date.today().year + 1).strftime("%Y-%m-%d")}",',
+        '     "target_glucose": "mg/dL range based on diabetes risk",',
+        '     "other": {',
+        '       "blood_pressure": "Target based on current status",',
+        '       "cholesterol": "Target levels based on CVD risk"',
+        '     }',
         "   }",
         "",
         "Requirements:",
