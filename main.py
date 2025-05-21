@@ -332,7 +332,7 @@ def generate_patient_prompt(input_values: dict, risk_probs: dict, medications: L
         '         "dinner":    {"item": "...", "grams":  ...},',
         '         "snacks":    [{"item": "...", "grams": ...}, ...]',
         "       },",
-        "       // days 2-5, including at least some non-Egyptian dishes for variety",
+        "       // days 2-5, including at least some arab dishes for variety",
         "     ],",
         '     "avoid": ["...", "..."],',
         '     "hydration": "liters per day"',
