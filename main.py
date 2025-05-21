@@ -289,78 +289,85 @@ def generate_patient_prompt(input_values: dict, risk_probs: dict, medications: L
         diet_focus = "Balanced nutrition"
     
     prompt = f"""
-    Generate personalized health recommendations for an Egyptian patient based on this profile:
-    {patient_profile}
-    
-    Health Risks:
-    - Diabetes: {risk_probs['Diabetes']}
-    - Heart Disease: {risk_probs['Heart Disease']}
-    
-    Current Medications:
-    {", ".join([f"{m.medicationName} ({m.dosage})" for m in medications]) if medications else "None"}
-    
-    Provide recommendations in this JSON format:
-    {{
-        "patient_recommendations": [
-            "Specific actionable advice tailored to the patient's profile",
-            "Another specific recommendation"
-        ],
-        "diet_plan": {{
-            "description": "Egyptian-style diet plan considering: {diet_focus}",
-            "calories": "Daily calorie target based on: gender {gender}, age {age}, BMI {bmi if bmi else 'N/A'}, activity level",
-            "macronutrients": {{
-                "carbs": "Percentage based on diabetes risk",
-                "protein": "Amount based on gender and age",
-                "fats": "Type and amount based on CVD risk"
-            }},
-            "key_focus": {diet_requirements},
-            "sample_meals": [
-                "Breakfast: Egyptian ful medames with whole wheat bread and vegetables",
-                "Lunch: Grilled fish with brown rice and salad",
-                "Dinner: Lentil soup with whole wheat pita"
-            ],
-            "avoid": [
-                "Foods to avoid based on conditions",
-                "Another item to avoid"
-            ],
-            "hydration": "2-3 liters of water daily"
-        }},
-        "exercise_plan": {{
-            "type": "Exercise types based on fitness level and health conditions",
-            "intensity": "light/moderate/vigorous based on current fitness",
-            "duration": "Minutes per session",
-            "frequency": "Sessions per week",
-            "progression": "How to progress over time",
-            "precautions": "Any special precautions based on health conditions"
-        }},
-        "nutrition_targets": {{
-            "target_BMI": "Realistic target based on current BMI",
-            "target_glucose": "Target glucose level if applicable",
-            "other_targets": "Any other relevant targets"
-        }}
-    }}
-    
-    Diet should specifically:
-    - Be culturally appropriate Egyptian foods
-    - Account for gender-specific nutritional needs
-    - Adjust for age-related requirements
-    - Address hypertension if present (low sodium)
-    - Be appropriate for diabetes risk level
-    - Support cardiovascular health if at risk
-    - Help with weight management based on BMI
-    
-    Recommendations should:
-    - Be culturally appropriate for Egypt
-    - Account for any health conditions
-    - Be realistic given the patient's current lifestyle
-    - Provide specific, actionable advice
-    - Consider current medications
-    - Address the highest priority health risks first
-    
-    Return ONLY the JSON object, no additional text or explanations.
-    """
-    
-    return prompt.strip()
+Generate a fully personalized health and nutrition plan for a patient using the profile below:
+
+Patient Profile:
+{patient_profile}
+
+Include the following sections, returning only a JSON object:
+
+1. patient_recommendations:  // List of concise, actionable tips tailored to this individual’s conditions, medications, lifestyle, and priorities (e.g., stress management, sleep hygiene)
+   [
+     "Advice 1",
+     "Advice 2",
+     "..."
+   ]
+
+2. diet_plan:
+   {
+     "description": "Brief overview of the plan and how it meets goals",
+     "daily_calories": {
+       "target": "<kcal> based on gender={gender}, age={age}, BMI={bmi}, activity level={activity_level}",
+       "range": "<min>-<max> kcal"
+     },
+     "macronutrients": {
+       "carbohydrates": {
+         "grams": "<g> (X% of total)",
+         "focus": "adjusted for diabetes risk"
+       },
+       "protein": {
+         "grams": "<g>",
+         "focus": "gender- and age-specific needs"
+       },
+       "fats": {
+         "grams": "<g>",
+         "type": "e.g., MUFA, PUFA",
+         "focus": "heart health and CVD risk"
+       }
+     },
+     "key_focus": {diet_requirements},  // e.g. low sodium, fiber-rich, glycemic control
+     "meals": [  // provide 5 days of varied, culturally diverse, portioned meals in grams
+       {
+         "day": 1,
+         "breakfast": {"item": "...", "grams":  ...},
+         "lunch":     {"item": "...", "grams":  ...},
+         "dinner":    {"item": "...", "grams":  ...},
+         "snacks":    [{"item": "...", "grams": ...}, ...]
+       },
+       // days 2–5, including at least some non-Egyptian dishes for variety
+     ],
+     "avoid": ["...", "..."],
+     "hydration": "<liters> per day"
+   }
+
+3. exercise_plan:
+   {
+     "weekly_schedule": [  // 7-day outline
+       {"day": "Monday",    "activity": "...", "duration_min":  ..., "intensity": "..."},
+       // all days, rest days included
+     ],
+     "type_recommendations": "mix of aerobic, strength, flexibility based on fitness={fitness_level}",
+     "precautions": "...",
+     "progression": "how to increase frequency or intensity over weeks"
+   }
+
+4. nutrition_targets:
+   {
+     "target_BMI": "<value> by <date>",
+     "target_glucose": "<mg/dL range>",
+     "other": {...}
+   }
+
+Requirements:
+- Use all inputs: age, gender, BMI, activity, exercise per week, stress level, sleep, current meds, health risks
+- Focus on macronutrient grams and percentages
+- Provide culturally sensitive choices with at least 30% non-Egyptian dishes
+- Ensure variety: rotate cuisines and ingredients daily
+- Adjust sodium, fiber, glycemic index per condition
+- Return ONLY the JSON object—no extra text
+
+"""  
+return prompt.strip()
 
 def generate_doctor_prompt(input_values: dict, risk_probs: dict, medications: List[Medication], 
                          available_meds: List[Medicine], specialty: str) -> str:
